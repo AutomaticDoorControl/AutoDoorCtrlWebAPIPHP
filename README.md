@@ -1,8 +1,12 @@
+# AutoDoorCtrlWebAPI
+AutoDoorCtrlWebAPIPHP is the API we use to connect our Angular web app to our MySQL database. The API is written in PHP, with some `.htaccess` files provided to make everything run smoothly. The repository for the website can be found [Here](https://github.com/AutomaticDoorControl/AutoDoorCtrlWeb)
+
 ## What to install
   * clone respository `https://github.com/AutomaticDoorControl/AutoDoorCtrlWebAPIPHP.git`
   * navigate to AutoDoorCtrlWebAPIPHP on your machine
-  * copy files to /var/www/html
-  * NOTE: This API will not work without the use of a properly setup MySQL database. Point the API to the db by changing `connection` in `Server.js.js`
+  * in folder `api`, run `composer install` to install dependencies
+  * copy `.htaccess` and the folder `api` to /var/www/html
+  * NOTE: This API will not work without the use of a properly setup MySQL database. Point the API to the db by changing `connection` in `index.php`
 
 ## API Calls
 Users are JSON objects in the form `{"Status": "Active|Request", "RCSid": <RCSid>}`
