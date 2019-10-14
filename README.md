@@ -52,6 +52,6 @@ Requests with a star (\*) require admin authentication, otherwise they will retu
     * Deletes all Users with RCSid `<RCSid>`
     * Returns a throwaway value
 * /api/submit-complaint
-    * Supply a JSON object in the form `{"location": <location>, "message": <message>}`
+    * Supply a JSON object in the form `{"Location": <location>, "Message": <message>}`
     * Stores the complaint in the server
     * Returns a throwaway value
