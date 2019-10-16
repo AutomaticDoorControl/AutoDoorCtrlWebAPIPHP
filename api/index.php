@@ -43,6 +43,9 @@ $password = 'developer';
 $dbname = 'users';
 //Holds the filesystem location of the four keys
 $keyStore = '/var/www/keys';
+//Holds the length of time in seconds for which a token is valid
+$userDuration = 259200;
+$adminDuration = 86400;
 
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
@@ -139,7 +142,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				$userPrivateKey = new Key('file://' . $keyStore . '/userPrivate.key');
 				$token = (new Builder())
 					->issuedAt($time) // Configures the time that the token was issue (iat claim)
-					->expiresAt($time + 3600) // Configures the expiration time of the token (exp claim)
+					->expiresAt($time + $userDuration) // Configures the expiration time of the token (exp claim)
 					->setSubject($postData['RCSid']) // Configures the subject of the token (sub claim)
 					->getToken($signer,  $userPrivateKey); // Retrieves the generated token
 				//Send the token to the client
@@ -181,7 +184,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 					$adminPrivateKey = new Key('file://' . $keyStore . '/adminPrivate.key');
 					$token = (new Builder())
 						->issuedAt($time) // Configures the time that the token was issue (iat claim)
-						->expiresAt($time + 3600) // Configures the expiration time of the token (exp claim)
+						->expiresAt($time + $adminDuration) // Configures the expiration time of the token (exp claim)
 						->setSubject($postData['username']) // Configures the subject of the token (sub claim)
 						->getToken($signer,  $adminPrivateKey); // Retrieves the generated token
 					//Send the token to the client
