@@ -52,7 +52,7 @@ function authenticate($publicKey)
 //Using an admin JWT
 function adminAuthenticate()
 {
-	global $keyStore;
+	global $adminPublic;
 	$publicKey = new Key('file://' . $adminPublic);
 	authenticate($publicKey);
 }
@@ -60,7 +60,7 @@ function adminAuthenticate()
 //Using a user JWT
 function userAuthenticate()
 {
-	global $keyStore;
+	global $userPublic;
 	$publicKey = new Key('file://' . $userPublic);
 	authenticate($publicKey);
 }
