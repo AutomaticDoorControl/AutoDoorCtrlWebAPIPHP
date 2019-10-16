@@ -1,5 +1,6 @@
 {
 	"require":{
-		"lcobucci/jwt":"3.3.1"
+		"lcobucci/jwt":"3.3.1",
+		"spomky-labs/otphp": "^10.0"
 	}
 }

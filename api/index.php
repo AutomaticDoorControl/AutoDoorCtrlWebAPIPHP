@@ -4,10 +4,19 @@ use Lcobucci\JWT\Builder;
 use Lcobucci\JWT\Signer\Key;
 use Lcobucci\JWT\Signer\Rsa\Sha256;
 use Lcobucci\JWT\Parser;
+use OTPHP\TOTP;
 
-//Checks if the current request is authenticated
-//using an admin JWT
-function adminAuthenticate()
+//Configuration variables
+//Holds the database connection information
+$servername = 'localhost';
+$username = 'developer';
+$password = 'developer';
+$dbname = 'users';
+//Holds the filesystem location of the four keys
+$keyStore = '/var/www/keys';
+
+//Checks if the current request is authenticated using $publicKey and JWT
+function authenticate($publicKey)
 {
 	$headers = getallheaders();
 	//If the request did not pass an Authorization header,
@@ -24,11 +33,9 @@ function adminAuthenticate()
 	$tokenString = substr($authHeader, 7);
 	//Verify the token against the admin public key
 	$signer = new Sha256();
-	global $keyStore;
-	$adminPublicKey = new Key('file://' . $keyStore . '/adminPublic.key');
 	$token = (new Parser())->parse((string) $tokenString);
 	//If unauthorized, fail. Otherwise continue
-	if(!$token->verify($signer, $adminPublicKey))
+	if(!$token->verify($signer, $publicKey))
 	{
 		header("HTTP/1.1 401 Unauthorized");
 		echo "Unauthorized";
@@ -36,13 +43,21 @@ function adminAuthenticate()
 	}
 }
 
-//Holds the database connection information
-$servername = 'localhost';
-$username = 'developer';
-$password = 'developer';
-$dbname = 'users';
-//Holds the filesystem location of the four keys
-$keyStore = '/var/www/keys';
+//Using an admin JWT
+function adminAuthenticate()
+{
+	global $keyStore;
+	$publicKey = new Key('file://' . $keyStore . '/adminPublic.key');
+	authenticate($publicKey);
+}
+
+//Using a user JWT
+function userAuthenticate()
+{
+	global $keyStore;
+	$publicKey = new Key('file://' . $keyStore . '/userPublic.key');
+	authenticate($publicKey);
+}
 
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
@@ -77,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		$query = 'SELECT * FROM complaints';
 		break;
 	case '/api/get-doors':
-		$query = 'SELECT * FROM doors';
+		$query = 'SELECT (name, location, latitude, longitude) FROM doors';
 		break;
 	//If we don't know this call, tell our client
 	default:
@@ -232,6 +247,24 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->execute();
 		//Return nothing
 		echo "[]";
+		break;
+	case '/api/open-door':
+		userAuthenticate();
+		$statement = $conn->prepare('SELECT `key` FROM doors WHERE name = ?');
+		$statement->bind_param('s', $postData['door']);
+		$statement->execute();
+		$result = $statement->get_result();
+		if($result)
+		{
+			$secret = mysqli_fetch_assoc($result)['key'];
+			$otp = TOTP::create($secret, 45, 'sha256', 10);
+			echo json_encode(['TOTP'=>strval($otp->now())]);
+		}
+		else
+		{
+			header("HTTP/1.1 500 Internal Server Error");
+			echo "Error!";
+		}
 		break;
 	default:
 		echo "Unknown API call";
