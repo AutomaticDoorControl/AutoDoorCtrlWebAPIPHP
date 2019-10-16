@@ -24,8 +24,8 @@ function adminAuthenticate()
 	$tokenString = substr($authHeader, 7);
 	//Verify the token against the admin public key
 	$signer = new Sha256();
-	global $keyStore;
-	$adminPublicKey = new Key('file://' . $keyStore . '/adminPublic.key');
+	global $adminPublic;
+	$adminPublicKey = new Key('file://' . $adminPublic);
 	$token = (new Parser())->parse((string) $tokenString);
 	//If unauthorized, fail. Otherwise continue
 	if(!$token->verify($signer, $adminPublicKey))
@@ -42,7 +42,10 @@ $username = 'developer';
 $password = 'developer';
 $dbname = 'users';
 //Holds the filesystem location of the four keys
-$keyStore = '/var/www/keys';
+$adminPublic = '/var/www/keys/adminPublic.key';
+$adminPrivate = '/var/www/keys/adminPrivate.key';
+$userPublic = '/var/www/keys/userPublic.key';
+$userPrivate = '/var/www/keys/userPrivate.key';
 //Holds the length of time in seconds for which a token is valid
 $userDuration = 259200;
 $adminDuration = 86400;
@@ -139,7 +142,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				$signer = new Sha256();
 				$time = time();
 				//Sign the JWT using the user private key
-				$userPrivateKey = new Key('file://' . $keyStore . '/userPrivate.key');
+				$userPrivateKey = new Key('file://' . $userPrivate);
 				$token = (new Builder())
 					->issuedAt($time) // Configures the time that the token was issue (iat claim)
 					->expiresAt($time + $userDuration) // Configures the expiration time of the token (exp claim)
@@ -181,7 +184,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 					//signed with the admin private key
 					$signer = new Sha256();
 					$time = time();
-					$adminPrivateKey = new Key('file://' . $keyStore . '/adminPrivate.key');
+					$adminPrivateKey = new Key('file://' . $adminPrivate);
 					$token = (new Builder())
 						->issuedAt($time) // Configures the time that the token was issue (iat claim)
 						->expiresAt($time + $adminDuration) // Configures the expiration time of the token (exp claim)
