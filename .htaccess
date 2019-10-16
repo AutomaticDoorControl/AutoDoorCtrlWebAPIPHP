@@ -1,9 +1,10 @@
 RewriteEngine On
 
-# If the requested resource is an API endpoint, use api/index.html
+# If the requested resource is /api/index.php, let the request go through
 RewriteCond %{REQUEST_URI} =/api/index.php
 RewriteRule ^ - [L]
 
+# If the requested resource is an API endpoint, use api/index.html
 RewriteCond %{REQUEST_URI} ^/api/
 RewriteRule .* /api/index.php [L]
 

@@ -13,7 +13,13 @@ $username = 'developer';
 $password = 'developer';
 $dbname = 'users';
 //Holds the filesystem location of the four keys
-$keyStore = '/var/www/keys';
+$adminPublic = '/var/www/keys/adminPublic.key';
+$adminPrivate = '/var/www/keys/adminPrivate.key';
+$userPublic = '/var/www/keys/userPublic.key';
+$userPrivate = '/var/www/keys/userPrivate.key';
+//Holds the length of time in seconds for which a token is valid
+$userDuration = 259200;
+$adminDuration = 86400;
 
 //Checks if the current request is authenticated using $publicKey and JWT
 function authenticate($publicKey)
@@ -47,7 +53,7 @@ function authenticate($publicKey)
 function adminAuthenticate()
 {
 	global $keyStore;
-	$publicKey = new Key('file://' . $keyStore . '/adminPublic.key');
+	$publicKey = new Key('file://' . $adminPublic);
 	authenticate($publicKey);
 }
 
@@ -55,7 +61,7 @@ function adminAuthenticate()
 function userAuthenticate()
 {
 	global $keyStore;
-	$publicKey = new Key('file://' . $keyStore . '/userPublic.key');
+	$publicKey = new Key('file://' . $userPublic);
 	authenticate($publicKey);
 }
 
@@ -63,8 +69,11 @@ function userAuthenticate()
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
 // Check connection
-if (!$conn) {
-	die('Connection failed: ' . mysqli_connect_error());
+if (!$conn)
+{
+	header("HTTP/1.1 500 Internal Server Error");
+	echo "Database Error";
+	exit;
 }
 
 //Server requests are differentiated by request method
@@ -96,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		break;
 	//If we don't know this call, tell our client
 	default:
+		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
 		exit;
 	}
@@ -120,7 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	}
 	else
 	{
-		echo "Error: " . mysqli_error($conn);
+		header("HTTP/1.1 500 Internal Server Error");
+		echo "Database Error";
+		exit;
 	}
 }
 else if ($_SERVER['REQUEST_METHOD'] === 'POST')
@@ -145,10 +157,10 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				$signer = new Sha256();
 				$time = time();
 				//Sign the JWT using the user private key
-				$userPrivateKey = new Key('file://' . $keyStore . '/userPrivate.key');
+				$userPrivateKey = new Key('file://' . $userPrivate);
 				$token = (new Builder())
 					->issuedAt($time) // Configures the time that the token was issue (iat claim)
-					->expiresAt($time + 3600) // Configures the expiration time of the token (exp claim)
+					->expiresAt($time + $userDuration) // Configures the expiration time of the token (exp claim)
 					->setSubject($postData['RCSid']) // Configures the subject of the token (sub claim)
 					->getToken($signer,  $userPrivateKey); // Retrieves the generated token
 				//Send the token to the client
@@ -162,7 +174,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		else
 		{
-			echo "Error: " . mysqli_error($conn);
+			header("HTTP/1.1 500 Internal Server Error");
+			echo "Database Error";
+			exit;
 		}
 		break;
 	case '/api/admin/login':
@@ -185,10 +199,10 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 					//signed with the admin private key
 					$signer = new Sha256();
 					$time = time();
-					$adminPrivateKey = new Key('file://' . $keyStore . '/adminPrivate.key');
+					$adminPrivateKey = new Key('file://' . $adminPrivate);
 					$token = (new Builder())
 						->issuedAt($time) // Configures the time that the token was issue (iat claim)
-						->expiresAt($time + 3600) // Configures the expiration time of the token (exp claim)
+						->expiresAt($time + $adminDuration) // Configures the expiration time of the token (exp claim)
 						->setSubject($postData['username']) // Configures the subject of the token (sub claim)
 						->getToken($signer,  $adminPrivateKey); // Retrieves the generated token
 					//Send the token to the client
@@ -209,7 +223,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		else
 		{
-			echo "Error: " . mysqli_error($conn);
+			header("HTTP/1.1 500 Internal Server Error");
+			echo "Database Error";
+			exit;
 		}
 		break;
 	case '/api/request-access':
@@ -267,6 +283,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		break;
 	default:
+		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
 		exit;
 	}
@@ -274,6 +291,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 else
 {
 	//If we get a request that is neither POST nor GET, fail
+	header("HTTP/1.1 500 Internal Server Error");
 	echo $_SERVER['REQUEST_METHOD'] . " requests are not accepted by this API";
 }
 ?>
