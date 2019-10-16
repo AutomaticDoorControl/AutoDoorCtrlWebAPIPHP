@@ -17,6 +17,8 @@ Admins are JSON objects in the form `{"username": <username>, "password": <bcryp
 
 Requests with a star (\*) require admin authentication, otherwise they will return a `401 Unauthorized` error. Authentication is handled by sending the header `Authorization: Bearer <JWT>` as part of the request, where `<JWT>` is the Json Web Token recieved during login. User JWTs are not valid for admin authentication.
 
+Requests with a plus (+) require user authentication. Authentication is handled in the same manner as for admin. 
+
 ### GET requests
 * /api/active_user \*
     * Returns an array of all Users where Status is `Active`
@@ -55,3 +57,6 @@ Requests with a star (\*) require admin authentication, otherwise they will retu
     * Supply a JSON object in the form `{"Location": <location>, "Message": <message>}`
     * Stores the complaint in the server
     * Returns a throwaway value
+* /api/open-door +
+    * Supply a JSON object in the form `{"door": <doorname>}`
+    * Returns a JSON object in the form `{"TOTP": <TOTP>}` where <TOTP> is a one-time password which can be used to open the specified door.
