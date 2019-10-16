@@ -22,18 +22,15 @@ $userDuration = 259200;
 $adminDuration = 86400;
 
 //Checks if the current request is authenticated using $publicKey and JWT
-function authenticate($publicKey)
+function authenticate($publicKeyFile)
 {
+	$publicKey = new Key('file://' . $publicKeyFile);
 	$headers = getallheaders();
 	//If the request did not pass an Authorization header,
 	//it is not authorized
 	if(!array_key_exists('Authorization', $headers))
-	{
-		header("HTTP/1.1 401 Unauthorized");
-		echo "Unauthorized";
-		exit;
-	}
-	//Requests should be prefixed with 'bearer', this removes that
+		return false;
+	//Requests should be prefixed with 'Bearer', this removes that
 	//to extract just the token
 	$authHeader = $headers['Authorization'];
 	$tokenString = substr($authHeader, 7);
@@ -42,6 +39,15 @@ function authenticate($publicKey)
 	$token = (new Parser())->parse((string) $tokenString);
 	//If unauthorized, fail. Otherwise continue
 	if(!$token->verify($signer, $publicKey))
+		return false;
+	return true;
+}
+
+//Using an admin JWT
+function adminAuthenticate()
+{
+	global $adminPublic;
+	if(!authenticate($adminPublic))
 	{
 		header("HTTP/1.1 401 Unauthorized");
 		echo "Unauthorized";
@@ -49,20 +55,32 @@ function authenticate($publicKey)
 	}
 }
 
-//Using an admin JWT
-function adminAuthenticate()
-{
-	global $adminPublic;
-	$publicKey = new Key('file://' . $adminPublic);
-	authenticate($publicKey);
-}
-
 //Using a user JWT
 function userAuthenticate()
 {
 	global $userPublic;
-	$publicKey = new Key('file://' . $userPublic);
-	authenticate($publicKey);
+	if(!authenticate($userPublic))
+	{
+		header("HTTP/1.1 401 Unauthorized");
+		echo "Unauthorized";
+		exit;
+	}
+}
+
+//Generate JWT with subject $subject that expires after $duration signed by $privateKeyFile
+function generateJWT($privateKeyFile, $subject, $duration)
+{
+	//We use RS256 for verification
+	$signer = new Sha256();
+	$time = time();
+	//Sign the JWT using the private key
+	$privateKey = new Key('file://' . $privateKeyFile);
+	$token = (new Builder())
+		->issuedAt($time) // Configures the time that the token was issue (iat claim)
+		->expiresAt($time + $duration) // Configures the expiration time of the token (exp claim)
+		->setSubject($subject) // Configures the subject of the token (sub claim)
+		->getToken($signer,  $privateKey); // Retrieves the generated token
+	return $token;
 }
 
 // Create connection
@@ -104,6 +122,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	case '/api/get-doors':
 		$query = 'SELECT name, location, latitude, longitude FROM doors';
 		break;
+	case '/api/renew-token':
+		header('Content-Type: application/json');
+		$headers = getallheaders();
+		if(authenticate($adminPublic))
+		{
+			//Requests should be prefixed with 'Bearer', this removes that
+			//to extract just the token
+			$authHeader = $headers['Authorization'];
+			$tokenString = substr($authHeader, 7);
+			//If this admin token exists, generate a new JWT with the same sub field
+			$sub = (new Parser())->parse((string) $tokenString)->getClaim('sub');
+			$token = generateJWT($adminPrivate, $sub, $adminDuration);
+			echo json_encode(["SESSIONID"=>strval($token)]);
+		}
+		else if(authenticate($userPublic))
+		{
+			//Requests should be prefixed with 'Bearer', this removes that
+			//to extract just the token
+			$authHeader = $headers['Authorization'];
+			$tokenString = substr($authHeader, 7);
+			//If this user token exists, generate a new JWT with the same sub field
+			$sub = (new Parser())->parse((string) $tokenString)->getClaim('sub');
+			$token = generateJWT($userPrivate, $sub, $userDuration);
+			echo json_encode(["SESSIONID"=>strval($token)]);
+		}
+		else
+		{
+			//If no such user exists, send back an empty SESSIONID
+			echo json_encode(["SESSIONID"=>""]);
+		}
+		exit;
 	//If we don't know this call, tell our client
 	default:
 		header("HTTP/1.1 400 Bad Request");
@@ -156,15 +205,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			if(mysqli_num_rows($result) > 0)
 			{
 				//If this user exists, generate a JWT for client
-				$signer = new Sha256();
-				$time = time();
-				//Sign the JWT using the user private key
-				$userPrivateKey = new Key('file://' . $userPrivate);
-				$token = (new Builder())
-					->issuedAt($time) // Configures the time that the token was issue (iat claim)
-					->expiresAt($time + $userDuration) // Configures the expiration time of the token (exp claim)
-					->setSubject($postData['RCSid']) // Configures the subject of the token (sub claim)
-					->getToken($signer,  $userPrivateKey); // Retrieves the generated token
+				$token = generateJWT($userPrivate, $postData['RCSid'], $userDuration);
 				//Send the token to the client
 				echo json_encode(["SESSIONID"=>strval($token)]);
 			}
@@ -199,15 +240,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				if(password_verify($postData['password'], $admin['password']))
 				{
 					//If this admin exists and the passwords match, generate a JWT
-					//signed with the admin private key
-					$signer = new Sha256();
-					$time = time();
-					$adminPrivateKey = new Key('file://' . $adminPrivate);
-					$token = (new Builder())
-						->issuedAt($time) // Configures the time that the token was issue (iat claim)
-						->expiresAt($time + $adminDuration) // Configures the expiration time of the token (exp claim)
-						->setSubject($postData['username']) // Configures the subject of the token (sub claim)
-						->getToken($signer,  $adminPrivateKey); // Retrieves the generated token
+					$token = generateJWT($adminPrivate, $postData['username'], $adminDuration);
 					//Send the token to the client
 					echo json_encode(["SESSIONID"=>strval($token)]);
 				}
