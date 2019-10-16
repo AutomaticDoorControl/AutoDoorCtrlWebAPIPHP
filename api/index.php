@@ -48,8 +48,11 @@ $keyStore = '/var/www/keys';
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
 // Check connection
-if (!$conn) {
-	die('Connection failed: ' . mysqli_connect_error());
+if (!$conn)
+{
+	header("HTTP/1.1 500 Internal Server Error");
+	echo "Database Error";
+	exit;
 }
 
 //Server requests are differentiated by request method
@@ -81,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		break;
 	//If we don't know this call, tell our client
 	default:
+		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
 		exit;
 	}
@@ -105,7 +109,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	}
 	else
 	{
-		echo "Error: " . mysqli_error($conn);
+		header("HTTP/1.1 500 Internal Server Error");
+		echo "Database Error";
+		exit;
 	}
 }
 else if ($_SERVER['REQUEST_METHOD'] === 'POST')
@@ -147,7 +153,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		else
 		{
-			echo "Error: " . mysqli_error($conn);
+			header("HTTP/1.1 500 Internal Server Error");
+			echo "Database Error";
+			exit;
 		}
 		break;
 	case '/api/admin/login':
@@ -194,7 +202,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		else
 		{
-			echo "Error: " . mysqli_error($conn);
+			header("HTTP/1.1 500 Internal Server Error");
+			echo "Database Error";
+			exit;
 		}
 		break;
 	case '/api/request-access':
@@ -234,6 +244,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		echo "[]";
 		break;
 	default:
+		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
 		exit;
 	}
@@ -241,6 +252,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 else
 {
 	//If we get a request that is neither POST nor GET, fail
+	header("HTTP/1.1 500 Internal Server Error");
 	echo $_SERVER['REQUEST_METHOD'] . " requests are not accepted by this API";
 }
 ?>
