@@ -30,9 +30,9 @@ Requests with a plus (+) require user authentication. Authentication is handled 
 * /api/get-complaints \*
     * Returns an array of JSON items in the form `{"location": <location>, "message": <message>}`
 * /api/get-doors
-    * Returns an array of JSON items in the form `{"name": <name>, "location": <location>, "latitude": <latitude>, "longitude": <longitude>}`
+    * Returns an array of JSON items in the form `{"name": <name>, "location": <location>, "latitude": <latitude>, "longitude": <longitude>, "mac": <MACAdress>}`
 * /api/renew-token \*/+
-    * Returns a JSON object in the form `{"SESSIONID": <JWT>}` where `<JWT>` is a signed JSON web token with `sub` field matching `sub` field of token used to authenticate. Additionally, `<JWT>` will be signed with the same key as the token used to authenticate, so both users and admins can use this call 
+    * Returns a JSON object in the form `{"SESSIONID": <JWT>}` where `<JWT>` is a signed JSON web token with `sub` field matching `sub` field of token used to authenticate. Additionally, `<JWT>` will be signed with the same key as the token used to authenticate, so both users and admins can use this call. If authentication fails, `<JWT>` will be an empty string `""` 
 
 ### POST requests
 * /api/login

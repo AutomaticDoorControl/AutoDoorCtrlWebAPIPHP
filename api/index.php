@@ -120,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		$query = 'SELECT * FROM complaints';
 		break;
 	case '/api/get-doors':
-		$query = 'SELECT name, location, latitude, longitude FROM doors';
+		$query = 'SELECT name, location, latitude, longitude, mac FROM doors';
 		break;
 	case '/api/renew-token':
 		header('Content-Type: application/json');
