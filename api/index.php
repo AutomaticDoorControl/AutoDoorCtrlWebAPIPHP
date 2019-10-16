@@ -72,6 +72,7 @@ $conn = mysqli_connect($servername, $username, $password, $dbname);
 if (!$conn)
 {
 	header("HTTP/1.1 500 Internal Server Error");
+	error_log(mysqli_error($conn));
 	echo "Database Error";
 	exit;
 }
@@ -101,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		$query = 'SELECT * FROM complaints';
 		break;
 	case '/api/get-doors':
-		$query = 'SELECT (name, location, latitude, longitude) FROM doors';
+		$query = 'SELECT name, location, latitude, longitude FROM doors';
 		break;
 	//If we don't know this call, tell our client
 	default:
@@ -131,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	else
 	{
 		header("HTTP/1.1 500 Internal Server Error");
+		error_log(mysqli_error($conn));
 		echo "Database Error";
 		exit;
 	}
@@ -175,6 +177,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		else
 		{
 			header("HTTP/1.1 500 Internal Server Error");
+			error_log(mysqli_error($conn));
 			echo "Database Error";
 			exit;
 		}
@@ -224,6 +227,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		else
 		{
 			header("HTTP/1.1 500 Internal Server Error");
+			error_log(mysqli_error($conn));
 			echo "Database Error";
 			exit;
 		}
@@ -279,6 +283,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		else
 		{
 			header("HTTP/1.1 500 Internal Server Error");
+			error_log(mysqli_error($conn));
 			echo "Error!";
 		}
 		break;
