@@ -277,7 +277,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		if($result)
 		{
 			$secret = mysqli_fetch_assoc($result)['key'];
-			$otp = TOTP::create($secret, 45, 'sha256', 10);
+			$otp = TOTP::create($secret, 30, 'sha256', 8);
 			echo json_encode(['TOTP'=>strval($otp->now())]);
 		}
 		else
