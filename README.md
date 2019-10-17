@@ -7,7 +7,7 @@ AutoDoorCtrlWebAPIPHP is the API we use to connect our Angular web app to our My
   * in folder `api`, run `composer install` to install dependencies
   * copy `.htaccess` and the folder `api` to /var/www/html
   * NOTE: This API will not work without the use of a properly setup MySQL database. Point the API to the db by changing `servername`, `username`, `password`, and `dbname` in `index.php`
-  * NOTE: This API will not work without two public/private keypairs. Point the API to these keys by changing `keyStore` in `index.php`
+  * NOTE: This API will not work without two public/private keypairs. Point the API to these keys by changing `adminPublic`, `adminPrivate`, `userPublic`, and `userPrivate` in `index.php`
   * NOTE: If you get permissions errors, it may be helpful to change ownership of files to `www-data` by running `sudo chown www-data:www-data /var/www/html/* /var/www/keys/*`, assuming you are using default paths
 
 ## API Calls
