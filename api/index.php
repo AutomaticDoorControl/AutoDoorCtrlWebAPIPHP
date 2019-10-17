@@ -29,7 +29,7 @@ function authenticate($publicKeyFile)
 	//If the request did not pass an Authorization header,
 	//it is not authorized
 	if(!array_key_exists('Authorization', $headers))
-		return false;
+		return "";
 	//Requests should be prefixed with 'Bearer', this removes that
 	//to extract just the token
 	$authHeader = $headers['Authorization'];
@@ -39,32 +39,36 @@ function authenticate($publicKeyFile)
 	$token = (new Parser())->parse((string) $tokenString);
 	//If unauthorized, fail. Otherwise continue
 	if(!$token->verify($signer, $publicKey))
-		return false;
-	return true;
+		return "";
+	return $token->getClaim('sub');
 }
 
 //Using an admin JWT
 function adminAuthenticate()
 {
 	global $adminPublic;
-	if(!authenticate($adminPublic))
+	$admin = authenticate($adminPublic);
+	if($admin == "")
 	{
 		header("HTTP/1.1 401 Unauthorized");
 		echo "Unauthorized";
 		exit;
 	}
+	return $admin;
 }
 
 //Using a user JWT
 function userAuthenticate()
 {
 	global $userPublic;
-	if(!authenticate($userPublic))
+	$user = authenticate($userPublic);
+	if($user == "")
 	{
 		header("HTTP/1.1 401 Unauthorized");
 		echo "Unauthorized";
 		exit;
 	}
+	return $user;
 }
 
 //Generate JWT with subject $subject that expires after $duration signed by $privateKeyFile
@@ -80,6 +84,7 @@ function generateJWT($privateKeyFile, $subject, $duration)
 		->expiresAt($time + $duration) // Configures the expiration time of the token (exp claim)
 		->setSubject($subject) // Configures the subject of the token (sub claim)
 		->getToken($signer,  $privateKey); // Retrieves the generated token
+	error_log("Token generated for " . $subject . " with key " . $privateKeyFile);
 	return $token;
 }
 
@@ -112,7 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		$query = 'SELECT * FROM students WHERE Status = "Request"';
 		break;
 	case '/api/addAll':
-		adminAuthenticate();
+		$admin = adminAuthenticate();
+		error_log("Admin " . $admin . " added all students to active");
 		$query = 'UPDATE students SET Status = "Active" WHERE Status = "Request"';
 		break;
 	case '/api/get-complaints':
@@ -124,27 +130,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		break;
 	case '/api/renew-token':
 		header('Content-Type: application/json');
-		$headers = getallheaders();
-		if(authenticate($adminPublic))
+		$admin = authenticate($adminPublic);
+		$user = authenticate($userPublic);
+		if($admin != "")
 		{
-			//Requests should be prefixed with 'Bearer', this removes that
-			//to extract just the token
-			$authHeader = $headers['Authorization'];
-			$tokenString = substr($authHeader, 7);
-			//If this admin token exists, generate a new JWT with the same sub field
-			$sub = (new Parser())->parse((string) $tokenString)->getClaim('sub');
-			$token = generateJWT($adminPrivate, $sub, $adminDuration);
+			$token = generateJWT($adminPrivate, $admin, $adminDuration);
 			echo json_encode(["SESSIONID"=>strval($token)]);
 		}
-		else if(authenticate($userPublic))
+		else if($user != "")
 		{
-			//Requests should be prefixed with 'Bearer', this removes that
-			//to extract just the token
-			$authHeader = $headers['Authorization'];
-			$tokenString = substr($authHeader, 7);
-			//If this user token exists, generate a new JWT with the same sub field
-			$sub = (new Parser())->parse((string) $tokenString)->getClaim('sub');
-			$token = generateJWT($userPrivate, $sub, $userDuration);
+			$token = generateJWT($userPrivate, $user, $userDuration);
 			echo json_encode(["SESSIONID"=>strval($token)]);
 		}
 		else
@@ -157,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	default:
 		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
+		error_log("Unknown API call: GET " . $_SERVER['REQUEST_URI']);
 		exit;
 	}
 	//Make the request
@@ -166,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		//If we have results, send them as a JSON array. Otherwise,
 		//send back an empty array
 		header('Content-Type: application/json');
-		if (mysqli_num_rows($result) > 0) {
+		if (gettype($result) != 'boolean' && mysqli_num_rows($result) > 0) {
 			$resultArr = [];
 			while($row = mysqli_fetch_assoc($result)) {
 				array_push($resultArr, $row);
@@ -195,7 +191,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 	case '/api/login':
 		//Get the list of students with RCSid passed to us. List should
 		//be of length 0 or 1
-		$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ?');
+		$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		$result = $statement->get_result();
@@ -204,6 +200,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			header('Content-Type: application/json');
 			if(mysqli_num_rows($result) > 0)
 			{
+				error_log("Successful login as user " . $postData['RCSid']);
 				//If this user exists, generate a JWT for client
 				$token = generateJWT($userPrivate, $postData['RCSid'], $userDuration);
 				//Send the token to the client
@@ -211,6 +208,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			}
 			else
 			{
+				error_log("Failed login as user " . $postData['RCSid']);
 				//If no such user exists, send back an empty SESSIONID
 				echo json_encode(["SESSIONID"=>""]);
 			}
@@ -239,6 +237,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				//Check the bcrypted password in DB against password passed to us
 				if(password_verify($postData['password'], $admin['password']))
 				{
+					error_log("Successful login as admin " . $postData['username']);
 					//If this admin exists and the passwords match, generate a JWT
 					$token = generateJWT($adminPrivate, $postData['username'], $adminDuration);
 					//Send the token to the client
@@ -246,6 +245,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				}
 				else
 				{
+					error_log("Failed login as admin " . $postData['username'] . ": Bad password");
 					//If password is incorrect, send back an empty SESSIONID
 					echo json_encode(["SESSIONID"=>""]);
 				}
@@ -253,6 +253,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			}
 			else
 			{
+				error_log("Failed login as admin " . $postData['username'] . ": Bad username");
 				//If no such user exists, send back an empty SESSIONID
 				echo json_encode(["SESSIONID"=>""]);
 			}
@@ -266,6 +267,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		break;
 	case '/api/request-access':
+		error_log("Access request with RCSid " . $postData['RCSid']);
 		//Insert a new student with Status Request and RSCid passed to us
 		$statement = $conn->prepare('INSERT INTO students (RCSid, Status) VALUES (?, "Request")');
 		$statement->bind_param('s', $postData['RCSid']);
@@ -275,7 +277,8 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		break;
 	case '/api/addtoActive':
 		//Check if user is an admin
-		adminAuthenticate();
+		$admin = adminAuthenticate();
+		error_log("Admin " . $admin . " added user " . $postData['RCSid'] . " to active");
 		//If they are, change Status of user with RCSid passed to us to Active
 		$statement = $conn->prepare('UPDATE students SET Status = "Active" WHERE RCSid = ?');
 		$statement->bind_param('s', $postData['RCSid']);
@@ -285,7 +288,8 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		break;
 	case '/api/remove':
 		//Check if user is an admin
-		adminAuthenticate();
+		$admin = adminAuthenticate();
+		error_log("Admin " . $admin . " removed user " . $postData['RCSid']);
 		//If they are, remove user with RCSid passed to us from db
 		$statement = $conn->prepare('DELETE FROM students WHERE RCSid = ?');
 		$statement->bind_param('s', $postData['RCSid']);
@@ -302,13 +306,18 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		echo "[]";
 		break;
 	case '/api/open-door':
-		userAuthenticate();
+		//Check if client is a user
+		$user = userAuthenticate();
+		error_log("User " . $user . " opened door " . $postData['door']);
+		//If they are, get the private key from the door
 		$statement = $conn->prepare('SELECT `key` FROM doors WHERE name = ?');
 		$statement->bind_param('s', $postData['door']);
 		$statement->execute();
 		$result = $statement->get_result();
 		if($result)
 		{
+			//If we get the key, generate a TOTP from the key
+			//and send it to the client
 			$secret = mysqli_fetch_assoc($result)['key'];
 			$otp = TOTP::create($secret, 30, 'sha256', 8);
 			echo json_encode(['TOTP'=>strval($otp->now())]);
@@ -317,19 +326,20 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		{
 			header("HTTP/1.1 500 Internal Server Error");
 			error_log(mysqli_error($conn));
-			echo "Error!";
+			echo "Database Error";
 		}
 		break;
 	default:
 		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
+		error_log("Unknown API call: POST " . $_SERVER['REQUEST_URI']);
 		exit;
 	}
 }
 else
 {
 	//If we get a request that is neither POST nor GET, fail
-	header("HTTP/1.1 500 Internal Server Error");
+	header("HTTP/1.1 400 Bad Request");
 	echo $_SERVER['REQUEST_METHOD'] . " requests are not accepted by this API";
 }
 ?>
