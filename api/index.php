@@ -21,6 +21,9 @@ $userPrivate = '/var/www/keys/userPrivate.key';
 $userDuration = 259200;
 $adminDuration = 86400;
 
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Headers: authorization, content-type");
+
 //Checks if the current request is authenticated using $publicKey and JWT
 function authenticate($publicKeyFile)
 {
