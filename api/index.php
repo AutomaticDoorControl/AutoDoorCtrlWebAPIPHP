@@ -36,7 +36,14 @@ function authenticate($publicKeyFile)
 	$tokenString = substr($authHeader, 7);
 	//Verify the token against the admin public key
 	$signer = new Sha256();
-	$token = (new Parser())->parse((string) $tokenString);
+	try
+	{
+		$token = (new Parser())->parse((string) $tokenString);
+	}
+	catch(InvalidArgumentException $e)
+	{
+		return "";
+	}
 	//If unauthorized, fail. Otherwise continue
 	if(!$token->verify($signer, $publicKey))
 		return "";
