@@ -316,11 +316,20 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$result = $statement->get_result();
 		if($result)
 		{
-			//If we get the key, generate a TOTP from the key
-			//and send it to the client
-			$secret = mysqli_fetch_assoc($result)['key'];
-			$otp = TOTP::create($secret, 30, 'sha256', 8);
-			echo json_encode(['TOTP'=>strval($otp->now())]);
+			if(mysqli_num_rows($result) > 0)
+			{
+				//If we get the key, generate a TOTP from the key
+				//and send it to the client
+				$secret = mysqli_fetch_assoc($result)['key'];
+				$otp = TOTP::create($secret, 30, 'sha256', 8);
+				echo json_encode(['TOTP'=>strval($otp->now())]);
+			}
+			else
+			{
+				header("HTTP/1.1 400 Bad Request");
+				error_log("No such door");
+				echo "Door not found";
+			}
 		}
 		else
 		{
@@ -335,6 +344,10 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		error_log("Unknown API call: POST " . $_SERVER['REQUEST_URI']);
 		exit;
 	}
+}
+else if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS')
+{
+	echo "good";
 }
 else
 {
