@@ -380,17 +380,20 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		break;
 	case '/api/change-password':
+		//Check if credentials are correct
 		if(!userLogin($postData['RCSid'], $postData['password']))
 		{
 			echo "Bad credentials";
 			exit;
 		}
+		//Create statement and hash password
 		$statement = $conn->prepare('UPDATE students SET Password = ? WHERE RCSid = ?');
 		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
 		$statement->bind_param('ss', $newPass, $postData['RCSid']);
 		$statement->execute();
 		$result = $statement->get_result();
 		error_log("Changed password for user " . $postData['RCSid']);
+		//If we failed, tell them. Otherwise, success
 		if(mysqli_errno($conn))
 		{
 			header("HTTP/1.1 500 Internal Server Error");
@@ -401,17 +404,40 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		echo "Password Changed";
 		break;
 	case '/api/admin/change-password':
+		//Check if credentials are correct
 		if(!adminLogin($postData['username'], $postData['password']))
 		{
 			echo "Bad credentials";
 			exit;
 		}
+		//Create statement and hash password
 		$statement = $conn->prepare('UPDATE admin SET password = ? WHERE username = ?');
 		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
 		$statement->bind_param('ss', $newPass, $postData['username']);
 		$statement->execute();
 		$result = $statement->get_result();
 		error_log("Changed password for admin " . $postData['username']);
+		//If we failed, tell them. Otherwise, success
+		if(mysqli_errno($conn))
+		{
+			header("HTTP/1.1 500 Internal Server Error");
+			error_log(mysqli_error($conn));
+			echo "Database Error";
+			exit;
+		}
+		echo "Password Changed";
+		break;
+	case '/api/reset-password':
+		//Check if user is an admin
+		$admin = adminAuthenticate();
+		//If the are, create the statement and hash password
+		error_log("Admin " . $admin . " reset password for user " . $postData['RCSid']);
+		$statement = $conn->prepare('UPDATE students SET Password = ? WHERE RCSid = ?');
+		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
+		$statement->bind_param('ss', $newPass, $postData['RCSid']);
+		$statement->execute();
+		$result = $statement->get_result();
+		//If we failed, tell them. Otherwise, success
 		if(mysqli_errno($conn))
 		{
 			header("HTTP/1.1 500 Internal Server Error");
