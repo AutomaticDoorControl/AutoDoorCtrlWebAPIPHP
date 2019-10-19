@@ -98,6 +98,86 @@ function generateJWT($privateKeyFile, $subject, $duration)
 	return $token;
 }
 
+function userLogin($RCSid, $password)
+{
+	global $conn;
+	//Get the list of students with RCSid passed to us. List should
+	//be of length 0 or 1
+	$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
+	$statement->bind_param('s', $RCSid);
+	$statement->execute();
+	$result = $statement->get_result();
+	if($result)
+	{
+		if(mysqli_num_rows($result) > 0)
+		{
+			$user = $result->fetch_assoc();
+			//Check the bcrypted password in DB against password passed to us
+			if(password_verify($password, $user['Password']))
+			{
+				error_log("Successful login as user " . $RCSid);
+				return true;
+			}
+			error_log("Failed login as user " . $RCSid . ": Bad password");
+			return false;
+		}
+		else
+		{
+			error_log("Failed login as user " . $RCSid . ": Bad RCSid");
+			return false;
+		}
+	}
+	else
+	{
+		header("HTTP/1.1 500 Internal Server Error");
+		error_log(mysqli_error($conn));
+		echo "Database Error";
+		exit;
+	}
+}
+
+function adminLogin($username, $password)
+{
+	global $conn;
+	//Get list of admin with username passed to us. List should be
+	//of length 0 or 1
+	$statement = $conn->prepare('SELECT * FROM admin WHERE username = ?');
+	$statement->bind_param('s', $username);
+	$statement->execute();
+	$result = $statement->get_result();
+	if($result)
+	{
+		if(mysqli_num_rows($result) > 0)
+		{
+			$admin = $result->fetch_assoc();
+			//Check the bcrypted password in DB against password passed to us
+			if(password_verify($password, $admin['password']))
+			{
+				error_log("Successful login as admin " . $username);
+				return true;
+			}
+			else
+			{
+				error_log("Failed login as admin " . $username . ": Bad password");
+				return false;
+			}
+
+		}
+		else
+		{
+			error_log("Failed login as admin " . $username . ": Bad username");
+			return false;
+		}
+	}
+	else
+	{
+		header("HTTP/1.1 500 Internal Server Error");
+		error_log(mysqli_error($conn));
+		echo "Database Error";
+		exit;
+	}
+}
+
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
@@ -120,11 +200,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	{
 	case '/api/active_user':
 		adminAuthenticate();
-		$query = 'SELECT * FROM students WHERE Status = "Active"';
+		$query = 'SELECT RCSid, Status FROM students WHERE Status = "Active"';
 		break;
 	case '/api/inactive_user':
 		adminAuthenticate();
-		$query = 'SELECT * FROM students WHERE Status = "Request"';
+		$query = 'SELECT RCSid, Status FROM students WHERE Status = "Request"';
 		break;
 	case '/api/addAll':
 		$admin = adminAuthenticate();
@@ -174,7 +254,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		header('Content-Type: application/json');
 		if (gettype($result) != 'boolean' && mysqli_num_rows($result) > 0) {
 			$resultArr = [];
-			while($row = mysqli_fetch_assoc($result)) {
+			while($row = mysqli_fetch_assoc($result))
+			{
 				array_push($resultArr, $row);
 			}
 			echo json_encode($resultArr);
@@ -199,87 +280,37 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 	switch($_SERVER['REQUEST_URI'])
 	{
 	case '/api/login':
-		//Get the list of students with RCSid passed to us. List should
-		//be of length 0 or 1
-		$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
-		$statement->bind_param('s', $postData['RCSid']);
-		$statement->execute();
-		$result = $statement->get_result();
-		if($result)
+		if(!userLogin($postData['RCSid'], $postData['password']))
 		{
+			//If no such user exists, send back an empty SESSIONID
 			header('Content-Type: application/json');
-			if(mysqli_num_rows($result) > 0)
-			{
-				error_log("Successful login as user " . $postData['RCSid']);
-				//If this user exists, generate a JWT for client
-				$token = generateJWT($userPrivate, $postData['RCSid'], $userDuration);
-				//Send the token to the client
-				echo json_encode(["SESSIONID"=>strval($token)]);
-			}
-			else
-			{
-				error_log("Failed login as user " . $postData['RCSid']);
-				//If no such user exists, send back an empty SESSIONID
-				echo json_encode(["SESSIONID"=>""]);
-			}
-		}
-		else
-		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
+			echo json_encode(["SESSIONID"=>""]);
 			exit;
 		}
+		//If this user exists, generate a JWT for client
+		$token = generateJWT($userPrivate, $postData['RCSid'], $userDuration);
+		//Send the token to the client
+		header('Content-Type: application/json');
+		echo json_encode(["SESSIONID"=>strval($token)]);
 		break;
 	case '/api/admin/login':
-		//Get list of admin with username passed to us. List should be
-		//of length 0 or 1
-		$statement = $conn->prepare('SELECT * FROM admin WHERE username = ?');
-		$statement->bind_param('s', $postData['username']);
-		$statement->execute();
-		$result = $statement->get_result();
-		if($result)
+		if(!adminLogin($postData['username'], $postData['password']))
 		{
+			//If no such admin exists, send back an empty SESSIONID
 			header('Content-Type: application/json');
-			if(mysqli_num_rows($result) > 0)
-			{
-				$admin = $result->fetch_assoc();
-				//Check the bcrypted password in DB against password passed to us
-				if(password_verify($postData['password'], $admin['password']))
-				{
-					error_log("Successful login as admin " . $postData['username']);
-					//If this admin exists and the passwords match, generate a JWT
-					$token = generateJWT($adminPrivate, $postData['username'], $adminDuration);
-					//Send the token to the client
-					echo json_encode(["SESSIONID"=>strval($token)]);
-				}
-				else
-				{
-					error_log("Failed login as admin " . $postData['username'] . ": Bad password");
-					//If password is incorrect, send back an empty SESSIONID
-					echo json_encode(["SESSIONID"=>""]);
-				}
-
-			}
-			else
-			{
-				error_log("Failed login as admin " . $postData['username'] . ": Bad username");
-				//If no such user exists, send back an empty SESSIONID
-				echo json_encode(["SESSIONID"=>""]);
-			}
-		}
-		else
-		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
+			echo json_encode(["SESSIONID"=>""]);
 			exit;
 		}
+		//If this admin exists and the passwords match, generate a JWT
+		$token = generateJWT($adminPrivate, $postData['username'], $adminDuration);
+		//Send the token to the client
+		header('Content-Type: application/json');
+		echo json_encode(["SESSIONID"=>strval($token)]);
 		break;
 	case '/api/request-access':
 		error_log("Access request with RCSid " . $postData['RCSid']);
 		//Insert a new student with Status Request and RSCid passed to us
-		$statement = $conn->prepare('INSERT INTO students (RCSid, Status) VALUES (?, "Request")');
+		$statement = $conn->prepare('INSERT INTO students (RCSid, Status, Password) VALUES (?, "Request", "")');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		//Return nothing
@@ -347,6 +378,48 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			error_log(mysqli_error($conn));
 			echo "Database Error";
 		}
+		break;
+	case '/api/change-password':
+		if(!userLogin($postData['RCSid'], $postData['password']))
+		{
+			echo "Bad credentials";
+			exit;
+		}
+		$statement = $conn->prepare('UPDATE students SET Password = ? WHERE RCSid = ?');
+		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
+		$statement->bind_param('ss', $newPass, $postData['RCSid']);
+		$statement->execute();
+		$result = $statement->get_result();
+		error_log("Changed password for user " . $postData['RCSid']);
+		if(mysqli_errno($conn))
+		{
+			header("HTTP/1.1 500 Internal Server Error");
+			error_log(mysqli_error($conn));
+			echo "Database Error";
+			exit;
+		}
+		echo "Password Changed";
+		break;
+	case '/api/admin/change-password':
+		if(!adminLogin($postData['username'], $postData['password']))
+		{
+			echo "Bad credentials";
+			exit;
+		}
+		$statement = $conn->prepare('UPDATE admin SET password = ? WHERE username = ?');
+		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
+		$statement->bind_param('ss', $newPass, $postData['username']);
+		$statement->execute();
+		$result = $statement->get_result();
+		error_log("Changed password for admin " . $postData['username']);
+		if(mysqli_errno($conn))
+		{
+			header("HTTP/1.1 500 Internal Server Error");
+			error_log(mysqli_error($conn));
+			echo "Database Error";
+			exit;
+		}
+		echo "Password Changed";
 		break;
 	default:
 		header("HTTP/1.1 400 Bad Request");
