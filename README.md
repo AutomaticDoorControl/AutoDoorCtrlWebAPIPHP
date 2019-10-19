@@ -36,9 +36,9 @@ Requests with a plus (+) require user authentication. Authentication is handled 
 
 ### POST requests
 * /api/login
-    * Supply a JSON object in the form `{"RCSid": <RCSid>}`
+    * Supply a JSON object in the form `{"RCSid": <RCSid>, "password": <password>}`
     * Returns a JSON object in the form `{"SESSIONID": <JWT>}` where `<JWT>` is a signed JSON web token with `sub` field matching `<RCSID>`
-    * If `<RCSid>` does not represent a valid active user, `<JWT>` will be an empty string `""`
+    * If `<RCSid>` and `<password>` do not together represent a valid active user, `<JWT>` will be an empty string `""`
 * /api/admin/login
     * Supply a JSON object in the form `{"username": <username>, "password": <password>}`
     * Returns a JSON object in the form `{"SESSIONID": <JWT>}` where `<JWT>` is a signed JSON web token with `sub` field matching `<username>`
@@ -62,3 +62,12 @@ Requests with a plus (+) require user authentication. Authentication is handled 
 * /api/open-door +
     * Supply a JSON object in the form `{"door": <doorname>}`
     * Returns a JSON object in the form `{"TOTP": <TOTP>}` where <TOTP> is a one-time password which can be used to open the specified door.
+* /api/change-password
+    * Supply a JSON object in the form `{"RCSid": <RCSid>, "password": <password>, "newPassword": <newPassword>}`
+    * If supplied valid credentials, changes password for user `<RCSid>` from `<password>` to `<newPassword>`
+* /api/admin/change-password
+    * Supply a JSON object in the form `{"username": <username>, "password": <password>, "newPassword": <newPassword>}`
+    * If supplied valid credentials, changes password for admin `<username>` from `<password>` to `<newPassword>`
+* /api/reset-password *
+    * Supply a JSON object in the form `{"RCSid": <RCSid>, "newPassword": <newPassword>}`
+    * Changes the password of user `<RCSid>` to `<newPassword>`
