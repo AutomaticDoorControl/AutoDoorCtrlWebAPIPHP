@@ -144,19 +144,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		$user = authenticate($userPublic);
 		if($admin != "")
 		{
-			$token = generateJWT($adminPrivate, $admin, $adminDuration);
-			echo json_encode(["SESSIONID"=>strval($token)]);
+			//Check if user exists in database
+			$statement = $conn->prepare('SELECT username FROM admin WHERE username = ?');
+			$statement->bind_param('s', $admin);
+			$statement->execute();
+			$result = $statement->get_result();
+			if($result)
+			{
+				if(mysqli_num_rows($result) > 0)
+				{
+					error_log("Admin " . $admin . " renewed their token");
+					$token = generateJWT($adminPrivate, $admin, $adminDuration);
+					echo json_encode(["SESSIONID"=>strval($token)]);
+					exit;
+				}
+			}
 		}
 		else if($user != "")
 		{
-			$token = generateJWT($userPrivate, $user, $userDuration);
-			echo json_encode(["SESSIONID"=>strval($token)]);
+			//Check if user exists in database
+			$statement = $conn->prepare('SELECT Status FROM students WHERE Status = "Active" AND RCSid = ?');
+			$statement->bind_param('s', $user);
+			$statement->execute();
+			$result = $statement->get_result();
+			if($result)
+			{
+				if(mysqli_num_rows($result) > 0)
+				{
+					error_log("User " . $user . " renewed their token");
+					$token = generateJWT($userPrivate, $user, $userDuration);
+					echo json_encode(["SESSIONID"=>strval($token)]);
+					exit;
+				}
+			}
 		}
-		else
-		{
-			//If no such user exists, send back an empty SESSIONID
-			echo json_encode(["SESSIONID"=>""]);
-		}
+		//If no such user exists, send back an empty SESSIONID
+		echo json_encode(["SESSIONID"=>""]);
 		exit;
 	//If we don't know this call, tell our client
 	default:
@@ -172,9 +195,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		//If we have results, send them as a JSON array. Otherwise,
 		//send back an empty array
 		header('Content-Type: application/json');
-		if (gettype($result) != 'boolean' && mysqli_num_rows($result) > 0) {
+		if (gettype($result) != 'boolean' && mysqli_num_rows($result) > 0)
+		{
 			$resultArr = [];
-			while($row = mysqli_fetch_assoc($result)) {
+			while($row = mysqli_fetch_assoc($result))
+			{
 				array_push($resultArr, $row);
 			}
 			echo json_encode($resultArr);
