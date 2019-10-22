@@ -386,7 +386,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 				//If we get the key, generate a TOTP from the key
 				//and send it to the client
 				$secret = mysqli_fetch_assoc($result)['key'];
-				$otp = TOTP::create($secret, 30, 'sha256', 8);
+				$otp = TOTP::create($secret, 30, 'sha256', 6);
 				echo json_encode(['TOTP'=>strval($otp->now())]);
 			}
 			else
