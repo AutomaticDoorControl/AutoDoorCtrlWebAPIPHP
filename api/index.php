@@ -178,6 +178,19 @@ function adminLogin($username, $password)
 	}
 }
 
+function checkError()
+{
+	global $conn;
+	//If we failed, tell them. Otherwise, success
+	if(mysqli_errno($conn))
+	{
+		header("HTTP/1.1 500 Internal Server Error");
+		error_log(mysqli_error($conn));
+		echo "Database Error";
+		exit;
+	}
+}
+
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
@@ -258,6 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 				}
 			}
 		}
+		checkError();
 		//If no such user exists, send back an empty SESSIONID
 		echo json_encode(["SESSIONID"=>""]);
 		exit;
@@ -270,24 +284,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	}
 	//Make the request
 	$result = mysqli_query($conn, $query);
+	checkError();
 	if($result)
 	{
+		//If we get back a boolean, we're done
+		if (gettype($result) == 'boolean')
+		{
+			exit;
+		}
 		//If we have results, send them as a JSON array. Otherwise,
 		//send back an empty array
 		header('Content-Type: application/json');
-		if (gettype($result) != 'boolean' && mysqli_num_rows($result) > 0)
+		$resultArr = [];
+		while($row = mysqli_fetch_assoc($result))
 		{
-			$resultArr = [];
-			while($row = mysqli_fetch_assoc($result))
-			{
-				array_push($resultArr, $row);
-			}
-			echo json_encode($resultArr);
+			array_push($resultArr, $row);
 		}
-		else
-		{
-			echo json_encode([]);
-		}
+		echo json_encode($resultArr);
 	}
 	else
 	{
@@ -313,6 +326,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		//If this user exists, generate a JWT for client
 		$token = generateJWT($userPrivate, $postData['RCSid'], $userDuration);
+		checkError();
 		//Send the token to the client
 		header('Content-Type: application/json');
 		echo json_encode(["SESSIONID"=>strval($token)]);
@@ -327,6 +341,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		}
 		//If this admin exists and the passwords match, generate a JWT
 		$token = generateJWT($adminPrivate, $postData['username'], $adminDuration);
+		checkError();
 		//Send the token to the client
 		header('Content-Type: application/json');
 		echo json_encode(["SESSIONID"=>strval($token)]);
@@ -337,8 +352,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement = $conn->prepare('INSERT INTO students (RCSid, Status, Password) VALUES (?, "Request", "")');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
-		//Return nothing
-		echo "[]";
+		checkError();
 		break;
 	case '/api/addtoActive':
 		//Check if user is an admin
@@ -348,8 +362,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement = $conn->prepare('UPDATE students SET Status = "Active" WHERE RCSid = ?');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
-		//Return nothing
-		echo "[]";
+		checkError();
 		break;
 	case '/api/remove':
 		//Check if user is an admin
@@ -359,16 +372,14 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement = $conn->prepare('DELETE FROM students WHERE RCSid = ?');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
-		//Return nothing
-		echo "[]";
+		checkError();
 		break;
 	case '/api/submit-complaint':
 		//Insert a new complaint with location and message passed to us
 		$statement = $conn->prepare('INSERT INTO complaints (location, message) VALUES (?, ?)');
 		$statement->bind_param('ss', $postData['Location'], $postData['Message']);
 		$statement->execute();
-		//Return nothing
-		echo "[]";
+		checkError();
 		break;
 	case '/api/open-door':
 		//Check if client is a user
@@ -379,6 +390,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->bind_param('s', $postData['door']);
 		$statement->execute();
 		$result = $statement->get_result();
+		checkError();
 		if($result)
 		{
 			if(mysqli_num_rows($result) > 0)
@@ -415,6 +427,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
 		$statement->bind_param('ss', $newPass, $postData['RCSid']);
 		$statement->execute();
+		checkError();
 		$result = $statement->get_result();
 		error_log("Changed password for user " . $postData['RCSid']);
 		//If we failed, tell them. Otherwise, success
@@ -425,7 +438,6 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			echo "Database Error";
 			exit;
 		}
-		echo "Password Changed";
 		break;
 	case '/api/admin/change-password':
 		//Check if credentials are correct
@@ -439,17 +451,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
 		$statement->bind_param('ss', $newPass, $postData['username']);
 		$statement->execute();
+		checkError();
 		$result = $statement->get_result();
 		error_log("Changed password for admin " . $postData['username']);
-		//If we failed, tell them. Otherwise, success
-		if(mysqli_errno($conn))
-		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
-			exit;
-		}
-		echo "Password Changed";
 		break;
 	case '/api/reset-password':
 		//Check if user is an admin
@@ -460,16 +464,8 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
 		$statement->bind_param('ss', $newPass, $postData['RCSid']);
 		$statement->execute();
+		checkError();
 		$result = $statement->get_result();
-		//If we failed, tell them. Otherwise, success
-		if(mysqli_errno($conn))
-		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
-			exit;
-		}
-		echo "Password Changed";
 		break;
 	default:
 		header("HTTP/1.1 400 Bad Request");
