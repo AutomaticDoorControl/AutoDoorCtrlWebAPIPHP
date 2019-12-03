@@ -6,6 +6,9 @@ use Lcobucci\JWT\Signer\Rsa\Sha256;
 use Lcobucci\JWT\Parser;
 use OTPHP\TOTP;
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 //Configuration variables
 //Holds the database connection information
 $servername = 'localhost';
@@ -20,6 +23,12 @@ $userPrivate = '/var/www/keys/userPrivate.key';
 //Holds the length of time in seconds for which a token is valid
 $userDuration = 259200;
 $adminDuration = 86400;
+//Holds SMTP connection info
+$mailServer = 'mail.rpiadc.com';
+$mailUsername = 'mailer';
+$mailPassword = 'password';
+$mailPort = 465;
+$mailSender = 'no-reply@rpiadc.com';
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: authorization, content-type");
@@ -191,6 +200,97 @@ function checkError()
 	}
 }
 
+function genPassword()
+{
+	return bin2hex(random_bytes(16));
+}
+
+function confirmationEmail($RCSid)
+{
+	sendEmail($RCSid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
+	error_log("Sent confirmation email to " . $RCSid);
+}
+
+function activatedEmail($RCSid, $tempPass)
+{
+	sendEmail($RCSid . "@rpi.edu", "Congratulations!", "Your RPI ADC account is now active. Your temporary password is " . $tempPass . ". You can use it to login at https://rpiadc.com, and don't forget to change it once you've logged in!");
+	error_log("Sent activation email to " . $RCSid);
+}
+
+function passwordChangeEmail($RCSid)
+{
+	sendEmail($RCSid . "@rpi.edu", "Password Change Notification", "Someone (hopefully you) just changed your password. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
+	error_log("Sent password change email to " . $RCSid);
+}
+
+function sendEmail($recipient, $subject, $message)
+{
+	global $mailServer, $mailUsername, $mailPassword, $mailPort, $mailSender;
+
+	$mail = new PHPMailer(true);
+	try
+	{
+		//Server settings
+		$mail->isSMTP();					// Send using SMTP
+		$mail->Host       = $mailServer;			// Set the SMTP server to send through
+		$mail->SMTPAuth   = true;				// Enable SMTP authentication
+		$mail->Username   = $mailUsername;			// SMTP username
+		$mail->Password   = $mailPassword;			// SMTP password
+		$mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;	// Enable TLS encryption; `PHPMailer::ENCRYPTION_SMTPS` also accepted
+		$mail->Port       = $mailPort ;				// TCP port to connect to
+
+		//Recipients
+		$mail->setFrom($mailSender);
+		$mail->addAddress($recipient);				// Add a recipient
+
+		// Content
+		$mail->isHTML(true);					// Set email format to HTML
+		$mail->Subject = $subject;
+		$mail->Body    = $message;
+
+		$mail->send();
+	}
+	catch (Exception $e)
+	{
+		header("HTTP/1.1 500 Internal Server Error");
+		echo "Mailer error";
+		error_log($mail->ErrorInfo);
+	}
+}
+
+function makeRequest($query)
+{
+	global $conn;
+	
+	//Make the request
+	$result = mysqli_query($conn, $query);
+	checkError();
+	if($result)
+	{
+		//If we get back a boolean, we're done
+		if (gettype($result) == 'boolean')
+		{
+			return "";
+		}
+		//If we have results, send them as a JSON array. Otherwise,
+		//send back an empty array
+		header('Content-Type: application/json');
+		$resultArr = [];
+		while($row = mysqli_fetch_assoc($result))
+		{
+			array_push($resultArr, $row);
+		}
+		return $resultArr;
+	}
+	else
+	{
+		header("HTTP/1.1 500 Internal Server Error");
+		error_log(mysqli_error($conn));
+		echo "Database Error";
+		exit;
+	}
+}
+
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
@@ -222,8 +322,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	case '/api/addAll':
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added all students to active");
+		$query = 'SELECT RCSid FROM students WHERE Status = "Request"';
+		$results = makeRequest($query);
+		foreach($results as $name)
+		{
+			$tempPass = genPassword();
+			activatedEmail($name['RCSid'], $tempPass);
+		}
 		$query = 'UPDATE students SET Status = "Active" WHERE Status = "Request"';
-		break;
+		echo json_encode(makeRequest($query));
+		exit;
 	case '/api/get-complaints':
 		adminAuthenticate();
 		$query = 'SELECT * FROM complaints';
@@ -282,33 +390,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		error_log("Unknown API call: GET " . $_SERVER['REQUEST_URI']);
 		exit;
 	}
-	//Make the request
-	$result = mysqli_query($conn, $query);
-	checkError();
-	if($result)
-	{
-		//If we get back a boolean, we're done
-		if (gettype($result) == 'boolean')
-		{
-			exit;
-		}
-		//If we have results, send them as a JSON array. Otherwise,
-		//send back an empty array
-		header('Content-Type: application/json');
-		$resultArr = [];
-		while($row = mysqli_fetch_assoc($result))
-		{
-			array_push($resultArr, $row);
-		}
-		echo json_encode($resultArr);
-	}
-	else
-	{
-		header("HTTP/1.1 500 Internal Server Error");
-		error_log(mysqli_error($conn));
-		echo "Database Error";
-		exit;
-	}
+	//Output the result
+	echo json_encode(makeRequest($query));
 }
 else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 {
@@ -353,16 +436,19 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		checkError();
+		confirmationEmail($postData['RCSid']);
 		break;
 	case '/api/addtoActive':
 		//Check if user is an admin
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added user " . $postData['RCSid'] . " to active");
 		//If they are, change Status of user with RCSid passed to us to Active
-		$statement = $conn->prepare('UPDATE students SET Status = "Active" WHERE RCSid = ?');
+		$tempPass = genPassword();
+		$statement = $conn->prepare('UPDATE students SET Status = "Active", Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		checkError();
+		activatedEmail($postData['RCSid'], $tempPass);
 		break;
 	case '/api/remove':
 		//Check if user is an admin
@@ -431,13 +517,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$result = $statement->get_result();
 		error_log("Changed password for user " . $postData['RCSid']);
 		//If we failed, tell them. Otherwise, success
-		if(mysqli_errno($conn))
-		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
-			exit;
-		}
+		passwordChangeEmail($postData['RCSid']);
 		break;
 	case '/api/admin/change-password':
 		//Check if credentials are correct
