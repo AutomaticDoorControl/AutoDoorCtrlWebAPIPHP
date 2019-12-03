@@ -200,9 +200,25 @@ function checkError()
 	}
 }
 
+function genPassword()
+{
+	return bin2hex(random_bytes(16));
+}
+
 function confirmationEmail($RCSid)
 {
 	sendEmail($RCSid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
+}
+
+function activatedEmail($RCSid)
+{
+	$tempPass = genPassword();
+	sendEmail($RCSid . "@rpi.edu", "Congratulations!", "Your RPI ADC account is now active. Your temporary password is " . $tempPass . ". You can use it to login at https://rpiadc.com, and don't forget to change it once you've logged in!");
+}
+
+function passwordChangeEmail($RCSid)
+{
+	sendEmail($RCSid . "@rpi.edu", "Password Change Notification", "Someone (hopefully you) just changed your password. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
 }
 
 function sendEmail($recipient, $subject, $message)
@@ -413,6 +429,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		checkError();
+		activatedEmail($postData['RCSid']);
 		break;
 	case '/api/remove':
 		//Check if user is an admin
@@ -481,13 +498,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$result = $statement->get_result();
 		error_log("Changed password for user " . $postData['RCSid']);
 		//If we failed, tell them. Otherwise, success
-		if(mysqli_errno($conn))
-		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
-			exit;
-		}
+		passwordChangeEmail($postData['RCSid']);
 		break;
 	case '/api/admin/change-password':
 		//Check if credentials are correct
