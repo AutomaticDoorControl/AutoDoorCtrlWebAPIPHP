@@ -6,6 +6,9 @@ use Lcobucci\JWT\Signer\Rsa\Sha256;
 use Lcobucci\JWT\Parser;
 use OTPHP\TOTP;
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
 //Configuration variables
 //Holds the database connection information
 $servername = 'localhost';
