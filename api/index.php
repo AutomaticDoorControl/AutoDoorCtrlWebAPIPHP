@@ -210,9 +210,8 @@ function confirmationEmail($RCSid)
 	sendEmail($RCSid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
 }
 
-function activatedEmail($RCSid)
+function activatedEmail($RCSid, $tempPass)
 {
-	$tempPass = genPassword();
 	sendEmail($RCSid . "@rpi.edu", "Congratulations!", "Your RPI ADC account is now active. Your temporary password is " . $tempPass . ". You can use it to login at https://rpiadc.com, and don't forget to change it once you've logged in!");
 }
 
@@ -425,11 +424,12 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added user " . $postData['RCSid'] . " to active");
 		//If they are, change Status of user with RCSid passed to us to Active
-		$statement = $conn->prepare('UPDATE students SET Status = "Active" WHERE RCSid = ?');
+		$tempPass = genPassword();
+		$statement = $conn->prepare('UPDATE students SET Status = "Active", Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		checkError();
-		activatedEmail($postData['RCSid']);
+		activatedEmail($postData['RCSid'], $tempPass);
 		break;
 	case '/api/remove':
 		//Check if user is an admin
