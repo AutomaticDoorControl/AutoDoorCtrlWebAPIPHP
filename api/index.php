@@ -23,6 +23,12 @@ $userPrivate = '/var/www/keys/userPrivate.key';
 //Holds the length of time in seconds for which a token is valid
 $userDuration = 259200;
 $adminDuration = 86400;
+//Holds SMTP connection info
+$mailServer = 'mail.rpiadc.com';
+$mailUsername = 'mailer';
+$mailPassword = 'password';
+$mailPort = 465;
+$mailSender = 'no-reply@rpiadc.com';
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: authorization, content-type");
@@ -194,6 +200,46 @@ function checkError()
 	}
 }
 
+function confirmationEmail($RCSid)
+{
+	sendEmail($RCSid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
+}
+
+function sendEmail($recipient, $subject, $message)
+{
+	global $mailServer, $mailUsername, $mailPassword, $mailPort, $mailSender;
+
+	$mail = new PHPMailer(true);
+	try
+	{
+		//Server settings
+		$mail->isSMTP();					// Send using SMTP
+		$mail->Host       = $mailServer;			// Set the SMTP server to send through
+		$mail->SMTPAuth   = true;				// Enable SMTP authentication
+		$mail->Username   = $mailUsername;			// SMTP username
+		$mail->Password   = $mailPassword;			// SMTP password
+		$mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;	// Enable TLS encryption; `PHPMailer::ENCRYPTION_SMTPS` also accepted
+		$mail->Port       = $mailPort ;				// TCP port to connect to
+
+		//Recipients
+		$mail->setFrom($mailSender);
+		$mail->addAddress($recipient);				// Add a recipient
+
+		// Content
+		$mail->isHTML(true);					// Set email format to HTML
+		$mail->Subject = $subject;
+		$mail->Body    = $message;
+
+		$mail->send();
+	}
+	catch (Exception $e)
+	{
+		header("HTTP/1.1 500 Internal Server Error");
+		echo "Mailer error";
+		error_log($mail->ErrorInfo);
+	}
+}
+
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
@@ -356,6 +402,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->bind_param('s', $postData['RCSid']);
 		$statement->execute();
 		checkError();
+		confirmationEmail($postData['RCSid']);
 		break;
 	case '/api/addtoActive':
 		//Check if user is an admin
