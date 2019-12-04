@@ -6,9 +6,11 @@ AutoDoorCtrlWebAPIPHP is the API we use to connect our Angular web app to our My
   * navigate to AutoDoorCtrlWebAPIPHP on your machine
   * in folder `api`, run `composer install` to install dependencies
   * copy `.htaccess` and the folder `api` to /var/www/html
-  * NOTE: This API will not work without the use of a properly setup MySQL database. Point the API to the db by changing `servername`, `username`, `password`, and `dbname` in `index.php`
-  * NOTE: This API will not work without two public/private keypairs. Point the API to these keys by changing `adminPublic`, `adminPrivate`, `userPublic`, and `userPrivate` in `index.php`
-  * NOTE: If you get permissions errors, it may be helpful to change ownership of files to `www-data` by running `sudo chown www-data:www-data /var/www/html/* /var/www/keys/*`, assuming you are using default paths
+## Notes  
+  * This API will not work without the use of a properly setup MySQL database. Point the API to the db by changing `servername`, `username`, `password`, and `dbname` in `index.php`
+  * This API will not work without two public/private keypairs. Point the API to these keys by changing `adminPublic`, `adminPrivate`, `userPublic`, and `userPrivate` in `index.php`
+  * This API will not have email functionality without a SMTP server from which it can send mail. Point the API to this SMTP server by changing `mailServer` and `mailPort`, and change mailer preferences with `mailUsername`, `mailPassword`, and `mailSender`
+  * If you get permissions errors, it may be helpful to change ownership of files to `www-data` by running `sudo chown www-data:www-data /var/www/html/* /var/www/keys/*`, assuming you are using default paths
 
 ## API Calls
 Users are JSON objects in the form `{"Status": "Active|Request", "RCSid": <RCSid>}`
@@ -26,6 +28,7 @@ Requests with a plus (+) require user authentication. Authentication is handled 
     * Returns an array of all Users where Status is `Request`
 * /api/addAll \*
     * Changes all Users' Status to `Active`
+    * If email is enabled, sends an email to each User with changed status, informing them of the change and including a new temporary password
     * Returns a throwaway value
 * /api/get-complaints \*
     * Returns an array of JSON items in the form `{"location": <location>, "message": <message>}`
@@ -46,10 +49,12 @@ Requests with a plus (+) require user authentication. Authentication is handled 
 * /api/request-access
     * Supply a JSON object in the form `{"RCSid": <RCSid>}`
     * Adds a row to Users with the values `{"Status": Request, "RCSid": <RCSid>}`
+    * If email is enabled, sends an email to `RCSid`@rpi.edu informing them they have been added to the waitlist
     * Returns a throwaway value
 * /api/addtoActive \*
     * Supply a JSON object in the form `{"RCSid": <RCSid>}`
     * Changes the status of User with RCSid `<RCSid>` to `Active`
+    * If email is enabled, sends an email to `RCSid`@rpi.edu, informing them that their account is now active and including a new temporary password
     * Returns a throwaway value
 * /api/remove \*
     * Supply a JSON object in the form `{"RCSid": <RCSid>}`
@@ -62,9 +67,10 @@ Requests with a plus (+) require user authentication. Authentication is handled 
 * /api/open-door +
     * Supply a JSON object in the form `{"door": <doorname>}`
     * Returns a JSON object in the form `{"TOTP": <TOTP>}` where <TOTP> is a one-time password which can be used to open the specified door.
-* /api/change-password
+ * /api/change-password
     * Supply a JSON object in the form `{"RCSid": <RCSid>, "password": <password>, "newPassword": <newPassword>}`
     * If supplied valid credentials, changes password for user `<RCSid>` from `<password>` to `<newPassword>`
+    * If email is enabled, sends an email to `RCSid`@rpi.edu informing them that their password has been changed, and instructing them to notify an admin if they were not the party who changed their password
 * /api/admin/change-password
     * Supply a JSON object in the form `{"username": <username>, "password": <password>, "newPassword": <newPassword>}`
     * If supplied valid credentials, changes password for admin `<username>` from `<password>` to `<newPassword>`
