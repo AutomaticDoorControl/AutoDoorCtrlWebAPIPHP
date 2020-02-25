@@ -21,8 +21,9 @@ $adminPrivate = '/var/www/keys/adminPrivate.key';
 $userPublic = '/var/www/keys/userPublic.key';
 $userPrivate = '/var/www/keys/userPrivate.key';
 //Holds the length of time in seconds for which a token is valid
-$userDuration = 259200;
-$adminDuration = 86400;
+$userDuration = 259200; //72 hours
+$adminDuration = 86400; //24 hours
+$forgetPasswordDuration = 1800; //30 minutes
 //Holds SMTP connection info
 $mailServer = 'mail.rpiadc.com';
 $mailUsername = 'mailer';
@@ -46,7 +47,12 @@ function authenticate($publicKeyFile)
 	//to extract just the token
 	$authHeader = $headers['Authorization'];
 	$tokenString = substr($authHeader, 7);
-	//Verify the token against the admin public key
+	return jwtAuthenticate($publicKeyFile, $tokenString);
+}
+
+function jwtAuthenticate($publicKeyFile, $tokenString)
+{
+	//Verify the token against the public key
 	$signer = new Sha256();
 	try
 	{
@@ -115,6 +121,7 @@ function userLogin($RCSid, $password)
 	$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
 	$statement->bind_param('s', $RCSid);
 	$statement->execute();
+	checkError();
 	$result = $statement->get_result();
 	if($result)
 	{
@@ -153,6 +160,7 @@ function adminLogin($username, $password)
 	$statement = $conn->prepare('SELECT * FROM admin WHERE username = ?');
 	$statement->bind_param('s', $username);
 	$statement->execute();
+	checkError();
 	$result = $statement->get_result();
 	if($result)
 	{
@@ -223,6 +231,21 @@ function passwordChangeEmail($RCSid)
 	error_log("Sent password change email to " . $RCSid);
 }
 
+function forgotPasswordEmail($RCSid)
+{
+	global $resetUserPrivate, $forgotPasswordDuration;
+
+	$forgotToken = generateJWT($resetUserPrivate, $RCSid, $forgotPasswordDuration); 
+	sendEmail($RCSid . "@rpi.edu", "Password Reset", "Someone (hopefully you) just requested a new password on this account. If it was you, please click the following link: <a href='https://rpiadc.com/api/forgot-password?token=" . $forgotToken . "'>RESET PASSWORD</a>. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
+	error_log("Sent forgot password email to " . $RCSid);
+}
+
+function resetPasswordEmail($RCSid, $tempPass)
+{
+	sendEmail($RCSid . "@rpi.edu", "Your Temporary Password", "Your password has been reset. Your temporary password is " . $tempPass . ". Please log in at https://rpiadc.com and change it as soon as possible");
+	error_log("Sent new password email to " . $RCSid);
+}
+
 function sendEmail($recipient, $subject, $message)
 {
 	global $mailServer, $mailUsername, $mailPassword, $mailPort, $mailSender;
@@ -291,6 +314,18 @@ function makeRequest($query)
 	}
 }
 
+function activate($RCSid)
+{
+	global $conn;
+
+	$tempPass = genPassword();
+	$statement = $conn->prepare('UPDATE students SET Status = "Active", Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
+	$statement->bind_param('s', $RCSid);
+	$statement->execute();
+	checkError();
+	activatedEmail($RCSid, $tempPass);
+}
+
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
 
@@ -326,11 +361,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		$results = makeRequest($query);
 		foreach($results as $name)
 		{
-			$tempPass = genPassword();
-			activatedEmail($name['RCSid'], $tempPass);
+			activate($name);
 		}
-		$query = 'UPDATE students SET Status = "Active" WHERE Status = "Request"';
-		echo json_encode(makeRequest($query));
 		exit;
 	case '/api/get-complaints':
 		adminAuthenticate();
@@ -349,6 +381,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 			$statement = $conn->prepare('SELECT username FROM admin WHERE username = ?');
 			$statement->bind_param('s', $admin);
 			$statement->execute();
+			checkError();
 			$result = $statement->get_result();
 			if($result)
 			{
@@ -367,6 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 			$statement = $conn->prepare('SELECT Status FROM students WHERE Status = "Active" AND RCSid = ?');
 			$statement->bind_param('s', $user);
 			$statement->execute();
+			checkError();
 			$result = $statement->get_result();
 			if($result)
 			{
@@ -379,10 +413,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 				}
 			}
 		}
-		checkError();
 		//If no such user exists, send back an empty SESSIONID
 		echo json_encode(["SESSIONID"=>""]);
 		exit;
+	case '/api/forgot-password':
+		$user = jwtAuthenticate($resetUserPublic, $_GET['token']);
+		if($user != "")
+		{
+			//Check if user exists in database
+			$statement = $conn->prepare('SELECT Status FROM students WHERE Status = "Active" AND RCSid = ?');
+			$statement->bind_param('s', $user);
+			$statement->execute();
+			checkError();
+			$result = $statement->get_result();
+			if($result)
+			{
+				if(mysqli_num_rows($result) > 0)
+				{
+					error_log("User " . $user . " reset their password");
+					$tempPass = genPassword();
+					$statement = $conn->prepare('UPDATE students SET Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
+					$statement->bind_param('s', $user);
+					$statement->execute();
+					checkError();
+					resetPasswordEmail($user, $tempPass);
+				}
+			}
+		}
+		header("Location: https://rpiadc.com/");
+		exit;
+
 	//If we don't know this call, tell our client
 	default:
 		header("HTTP/1.1 400 Bad Request");
@@ -443,12 +503,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added user " . $postData['RCSid'] . " to active");
 		//If they are, change Status of user with RCSid passed to us to Active
-		$tempPass = genPassword();
-		$statement = $conn->prepare('UPDATE students SET Status = "Active", Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
-		$statement->bind_param('s', $postData['RCSid']);
-		$statement->execute();
-		checkError();
-		activatedEmail($postData['RCSid'], $tempPass);
+		activate($postData['RCSid']);
 		break;
 	case '/api/remove':
 		//Check if user is an admin
@@ -547,6 +602,21 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		checkError();
 		$result = $statement->get_result();
 		break;
+	case '/api/forgot-password':
+		error_log("User " . $postData['RCSid'] . " forgot their password");
+		$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
+		$statement->bind_param('s', $RCSid);
+		$statement->execute();
+		checkError();
+		$result = $statement->get_result();
+		if($result)
+		{
+			if(mysqli_num_rows($result) > 0)
+			{
+				forgotPasswordEmail($postData['RCSid']);
+			}
+		}
+		exit;
 	default:
 		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";

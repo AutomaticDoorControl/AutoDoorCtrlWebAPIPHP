@@ -36,6 +36,10 @@ Requests with a plus (+) require user authentication. Authentication is handled 
     * Returns an array of JSON items in the form `{"name": <name>, "location": <location>, "latitude": <latitude>, "longitude": <longitude>, "mac": <MACAdress>}`
 * /api/renew-token \*/+
     * Returns a JSON object in the form `{"SESSIONID": <JWT>}` where `<JWT>` is a signed JSON web token with `sub` field matching `sub` field of token used to authenticate. Additionally, `<JWT>` will be signed with the same key as the token used to authenticate, so both users and admins can use this call. If authentication fails, `<JWT>` will be an empty string `""` 
+* /api/forgot-password
+    * Supply a GET parameter `token` containing a reset token (can be recovered from email sent by /api/forgot-password POST request)
+    * If token is valid, resets user password to a new temporary password
+    * If email is enabled, sends an email to the user indicated by the token informing them of the password reset and including a new temporary password
 
 ### POST requests
 * /api/login
@@ -77,3 +81,6 @@ Requests with a plus (+) require user authentication. Authentication is handled 
 * /api/reset-password *
     * Supply a JSON object in the form `{"RCSid": <RCSid>, "newPassword": <newPassword>}`
     * Changes the password of user `<RCSid>` to `<newPassword>`
+* /api/forgot-password
+    * Supply a JSON object in the form `{"RCSid": <RCSid>}`
+    * If email is enabled and `RCSid` represents a valid active user, sends an email to `RCSid`@rpi.edu with a reset link containing an authentication token
