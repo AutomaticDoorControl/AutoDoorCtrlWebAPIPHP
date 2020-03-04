@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		//Output the result
 		dumpRequest($query);
 		break;
-	case '/api/get_users':
+	case '/api/inactive_user':
 		adminAuthenticate();
 		$query = '
 		SELECT
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 			users
 		WHERE
 			admin = 0 AND
-			enabled = 1';
+			enabled = 0';
 		//Output the result
 		dumpRequest($query);
 		break;
