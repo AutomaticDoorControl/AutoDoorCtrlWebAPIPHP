@@ -10,12 +10,14 @@ include 'email.php';
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: authorization, content-type");
 
+$betterURI = explode('?', $_SERVER['REQUEST_URI'], 2)[0];
+
 //Server requests are differentiated by request method
 if ($_SERVER['REQUEST_METHOD'] === 'GET')
 {
 	//Because all calls to /api/* are redirected here, we must
 	//decide which call we're actually making
-	switch($_SERVER['REQUEST_URI'])
+	switch($betterURI)
 	{
 	case '/api/get_users':
 		adminAuthenticate();
@@ -69,13 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 			break;
 		}
 		$query = 'UPDATE tokens SET expiration = ADDDATE(UTC_TIMESTAMP, INTERVAL ? SECOND) WHERE value = ?';
-		$duration = $userDuration;
-		if($user['admin'])
-		{
-			$duration = $adminDuration;
-		}
 		$statement = $conn->prepare($query);
-		$statement->bind_param('is', $duration, $token);
+		$statement->bind_param('is', $loginDuration, $token);
 		$statement->execute();
 		error_log('Renewed token for ' . $user['rcsid']);
 		checkError();
@@ -87,16 +84,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		{
 			error_log("User " . $user['rcsid'] . " reset their password");
 			$tempPass = resetPassword($user['rcsid']);
-			resetPasswordEmail($user, $tempPass);
+			resetPasswordEmail($user['rcsid'], $tempPass);
 		}
 		header("Location: https://rpiadc.com/");
+		break;
+	case '/api/logout':
+		$token = getToken();
+		if($token != "")
+		{
+			$query = 'DELETE FROM tokens WHERE value = ?';
+			$statement = $conn->prepare($query);
+			$statement->bind_param('s', $token);
+			$statement->execute();
+			checkError();
+		}
 		break;
 
 	//If we don't know this call, tell our client
 	default:
 		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
-		error_log("Unknown API call: GET " . $_SERVER['REQUEST_URI']);
+		error_log("Unknown API call: GET " . $betterURI);
 	}
 }
 else if ($_SERVER['REQUEST_METHOD'] === 'POST')
@@ -112,7 +120,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		if(login($postData['rcsid'], $postData['password']))
 		{
 			//If this user exists, generate a JWT for client
-			$token = generateToken($postData['rcsid'], "login", $userDuration);
+			$token = generateToken($postData['rcsid'], "login", $loginDuration);
 		}
 		//Send the token to the client
 		echo json_encode(["SESSIONID"=>$token]);
@@ -212,7 +220,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$result = $statement->get_result();
 		if($result && mysqli_num_rows($result) > 0)
 		{
-			forgotPasswordEmail($postData['RCSid']);
+			forgotPasswordEmail($postData['rcsid']);
 		}
 		break;
 	default:

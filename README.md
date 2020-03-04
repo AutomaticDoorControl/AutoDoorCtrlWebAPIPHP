@@ -13,17 +13,15 @@ AutoDoorCtrlWebAPIPHP is the API we use to connect our Angular web app to our My
   * If an API call does not have an explicit return value, any data recieved should be ignored. Success or failure will be communicated through HTTP status codes
 
 ## API Calls
-User objects returned by the API  are JSON objects in the form `{"status": "active|request", "rcsid": <rcsid>}`
+User objects returned by the API  are JSON objects in the form `{"rcsid": <rcsid>, "enabled": <boolean>}`
 
 Requests with a star (\*) require admin authentication, otherwise they will return a `401 Unauthorized` error. Authentication is handled by sending the header `Authorization: Bearer <token>` as part of the request, where `<token>` is the token recieved during login. User tokens are not valid for admin authentication.
 
 Requests with a plus (+) require user authentication. Authentication is handled in the same manner as for admin. 
 
 ### GET requests
-* /api/active_user \*
-    * Returns an array of all non-admin enabled Users
-* /api/inactive_user \*
-    * Returns an array of all non-admin disabled Users
+* /api/get_users \*
+    * Returns an array of all non-admin Users
 * /api/add_all \*
     * Changes all Users' Status to `Active`
     * If email is enabled, sends an email to each User with changed status, informing them of the change and including a new temporary password
