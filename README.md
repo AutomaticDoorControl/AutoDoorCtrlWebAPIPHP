@@ -20,8 +20,10 @@ Requests with a star (\*) require admin authentication, otherwise they will retu
 Requests with a plus (+) require user authentication. Authentication is handled in the same manner as for admin. 
 
 ### GET requests
-* /api/get_users \*
-    * Returns an array of all non-admin Users
+* /api/active_user \*
+    * Returns an array of all non-admin active Users
+* /api/inactive_user \*
+    * Returns an array of all non-admin inactive Users
 * /api/add_all \*
     * Changes all Users' Status to `Active`
     * If email is enabled, sends an email to each User with changed status, informing them of the change and including a new temporary password

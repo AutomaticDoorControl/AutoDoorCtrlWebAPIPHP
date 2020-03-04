@@ -19,16 +19,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 	//decide which call we're actually making
 	switch($betterURI)
 	{
+	case '/api/active_user':
+		adminAuthenticate();
+		$query = '
+		SELECT
+			rcsid
+		FROM
+			users
+		WHERE
+			admin = 0 AND
+			enabled = 1';
+		//Output the result
+		dumpRequest($query);
+		break;
 	case '/api/get_users':
 		adminAuthenticate();
 		$query = '
 		SELECT
-			rcsid,
-			enabled
+			rcsid
 		FROM
 			users
 		WHERE
-			admin = 0';
+			admin = 0 AND
+			enabled = 1';
 		//Output the result
 		dumpRequest($query);
 		break;
