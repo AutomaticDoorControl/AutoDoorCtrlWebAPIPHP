@@ -3,7 +3,6 @@
     "description": "The API that powers ADC clients",
     "type": "project",
     "require": {
-        "lcobucci/jwt": "^3.3",
         "spomky-labs/otphp": "^10.0",
         "phpmailer/phpmailer": "^6.1"
     },
