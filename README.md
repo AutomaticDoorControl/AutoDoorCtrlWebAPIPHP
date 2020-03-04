@@ -36,6 +36,8 @@ Requests with a plus (+) require user authentication. Authentication is handled 
     * Supply a GET parameter `token` containing a reset token (can be recovered from email sent by /api/forgot_password POST request)
     * If token is valid, resets user password to a new temporary password
     * If email is enabled, sends an email to the user indicated by the token informing them of the password reset and including a new temporary password
+* /api/logout
+    * If this request is made with a valid authentication token, the token is disabled and cannot be used for further requests
 
 ### POST requests
 * /api/login

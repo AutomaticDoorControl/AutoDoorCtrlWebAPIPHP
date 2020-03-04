@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		//Output the result
 		dumpRequest($query);
 		break;
-	case '/api/addAll':
+	case '/api/add_all':
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added all students to active");
 		$query = '
@@ -50,18 +50,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 			activatedEmail($name, $tempPass);
 		}
 		break;
-	case '/api/get-complaints':
+	case '/api/get_complaints':
 		adminAuthenticate();
 		$query = 'SELECT * FROM complaints';
 		//Output the result
 		dumpRequest($query);
 		break;
-	case '/api/get-doors':
+	case '/api/get_doors':
 		$query = 'SELECT name, location, latitude, longitude, mac FROM doors';
 		//Output the result
 		dumpRequest($query);
 		break;
-	case '/api/renew-token':
+	case '/api/renew_token':
 		$token = getToken();
 		$user = authenticate("login", $token);
 		if($user == NULL)
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET')
 		error_log('Renewed token for ' . $user['rcsid']);
 		checkError();
 		break;
-	case '/api/forgot-password':
+	case '/api/forgot_password':
 		$token = $_GET['token'];
 		$user = authenticate("forgot-passwd", $_GET['token']);
 		if($user != NULL)
@@ -125,7 +125,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		//Send the token to the client
 		echo json_encode(["SESSIONID"=>$token]);
 		break;
-	case '/api/request-access':
+	case '/api/request_access':
 		error_log("Access request with rcsid " . $postData['rcsid']);
 		//Insert a new student with Status Request and RSCid passed to us
 		$statement = $conn->prepare('INSERT INTO users (rcsid, password, admin, enabled) VALUES (?, "", 0, 0)');
@@ -134,7 +134,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		checkError();
 		confirmationEmail($postData['rcsid']);
 		break;
-	case '/api/addtoActive':
+	case '/api/add_to_active':
 		//Check if user is an admin
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added user " . $postData['rcsid'] . " to active");
@@ -151,14 +151,14 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->execute();
 		checkError();
 		break;
-	case '/api/submit-complaint':
+	case '/api/submit_complaint':
 		//Insert a new complaint with location and message passed to us
 		$statement = $conn->prepare('INSERT INTO complaints (location, message) VALUES (?, ?)');
 		$statement->bind_param('ss', $postData['location'], $postData['message']);
 		$statement->execute();
 		checkError();
 		break;
-	case '/api/open-door':
+	case '/api/open_door':
 		//Check if client is a user
 		$user = userAuthenticate();
 		error_log("User " . $user . " opened door " . $postData['door']);
@@ -183,7 +183,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 			echo "Door not found";
 		}
 		break;
-	case '/api/change-password':
+	case '/api/change_password':
 		//Check if credentials are correct
 		if(!login($postData['rcsid'], $postData['password']))
 		{
@@ -200,7 +200,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		//If we failed, tell them. Otherwise, success
 		passwordChangeEmail($postData['rcsid']);
 		break;
-	case '/api/reset-password':
+	case '/api/reset_password':
 		//Check if user is an admin
 		$admin = adminAuthenticate();
 		//If they are, create the statement and hash password
@@ -211,7 +211,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->execute();
 		checkError();
 		break;
-	case '/api/forgot-password':
+	case '/api/forgot_password':
 		error_log("User " . $postData['rcsid'] . " forgot their password");
 		$statement = $conn->prepare('SELECT * FROM users WHERE rcsid = ? AND enabled = 1');
 		$statement->bind_param('s', $postData['rcsid']);
