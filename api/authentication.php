@@ -138,7 +138,8 @@ function login($user, $password)
 
 	$query = '
 	SELECT
-		password
+		password,
+		admin
 	FROM
 		users
 	WHERE
@@ -152,16 +153,17 @@ function login($user, $password)
 	if(mysqli_num_rows($result) == 0)
 	{
 		error_log("Failed login as " . $user . ": Bad rcsid");
-		return false;
+		return -1;
 	}
-	$hash = $result->fetch_assoc()['password'];
+	$row = $result->fetch_assoc();
+	$hash = $row['password'];
 	if(password_verify($password, $hash))
 	{
 		error_log("Successful login as " . $user);
-		return true;
+		return $row['admin'];
 	}
 	error_log("Failed login as " . $user . ": Bad password");
-	return false;
+	return -1;
 }
 
 function resetPassword($rcsid)

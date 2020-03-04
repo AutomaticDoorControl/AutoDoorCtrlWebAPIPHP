@@ -130,13 +130,14 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		header('Content-Type: application/json');
 		//If no such user exists, send back an empty SESSIONID
 		$token = "";
-		if(login($postData['rcsid'], $postData['password']))
+		$isAdmin = login($postData['rcsid'], $postData['password']);
+		if($isAdmin != -1)
 		{
 			//If this user exists, generate a JWT for client
 			$token = generateToken($postData['rcsid'], "login", $loginDuration);
 		}
 		//Send the token to the client
-		echo json_encode(["SESSIONID"=>$token]);
+		echo json_encode(["SESSIONID"=>$token, "admin"=>$isAdmin]);
 		break;
 	case '/api/request_access':
 		error_log("Access request with rcsid " . $postData['rcsid']);
@@ -198,7 +199,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		break;
 	case '/api/change_password':
 		//Check if credentials are correct
-		if(!login($postData['rcsid'], $postData['password']))
+		if(login($postData['rcsid'], $postData['password']) == -1)
 		{
 			echo "Bad credentials";
 			exit;
