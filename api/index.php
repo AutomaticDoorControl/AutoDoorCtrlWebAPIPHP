@@ -153,7 +153,9 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added user " . $postData['rcsid'] . " to active");
 		//If they are, change Status of user with RCSid passed to us to Active
-		activate($postData['rcsid']);
+		//activate($postData['rcsid']);
+		$tempPass = resetPassword($postData['rcsid']);
+                activatedEmail($postData['rcsid'], $tempPass);
 		break;
 	case '/api/remove':
 		//Check if user is an admin
