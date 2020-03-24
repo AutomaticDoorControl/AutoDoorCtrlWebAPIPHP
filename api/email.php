@@ -6,7 +6,7 @@ use PHPMailer\PHPMailer\Exception;
 
 function confirmationEmail($rcsid)
 {
-	sendEmail($rscid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
+	sendEmail($rcsid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
 	error_log("Sent confirmation email to " . $rcsid);
 }
 
