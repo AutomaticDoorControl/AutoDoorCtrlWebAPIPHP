@@ -1,457 +1,124 @@
 <?php
 require __DIR__ . '/vendor/autoload.php';
-use Lcobucci\JWT\Builder;
-use Lcobucci\JWT\Signer\Key;
-use Lcobucci\JWT\Signer\Rsa\Sha256;
-use Lcobucci\JWT\Parser;
 use OTPHP\TOTP;
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-//Configuration variables
-//Holds the database connection information
-$servername = 'localhost';
-$username = 'developer';
-$password = 'developer';
-$dbname = 'users';
-//Holds the filesystem location of the four keys
-$adminPublic = '/var/www/keys/adminPublic.key';
-$adminPrivate = '/var/www/keys/adminPrivate.key';
-$userPublic = '/var/www/keys/userPublic.key';
-$userPrivate = '/var/www/keys/userPrivate.key';
-//Holds the length of time in seconds for which a token is valid
-$userDuration = 259200; //72 hours
-$adminDuration = 86400; //24 hours
-$forgetPasswordDuration = 1800; //30 minutes
-//Holds SMTP connection info
-$mailServer = 'mail.rpiadc.com';
-$mailUsername = 'mailer';
-$mailPassword = 'password';
-$mailPort = 465;
-$mailSender = 'no-reply@rpiadc.com';
+include 'constants.php';
+include 'database.php';
+include 'authentication.php';
+include 'email.php';
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: authorization, content-type");
 
-//Checks if the current request is authenticated using $publicKey and JWT
-function authenticate($publicKeyFile)
-{
-	$publicKey = new Key('file://' . $publicKeyFile);
-	$headers = getallheaders();
-	//If the request did not pass an Authorization header,
-	//it is not authorized
-	if(!array_key_exists('Authorization', $headers))
-		return "";
-	//Requests should be prefixed with 'Bearer', this removes that
-	//to extract just the token
-	$authHeader = $headers['Authorization'];
-	$tokenString = substr($authHeader, 7);
-	return jwtAuthenticate($publicKeyFile, $tokenString);
-}
-
-function jwtAuthenticate($publicKeyFile, $tokenString)
-{
-	//Verify the token against the public key
-	$signer = new Sha256();
-	try
-	{
-		$token = (new Parser())->parse((string) $tokenString);
-	}
-	catch(InvalidArgumentException $e)
-	{
-		return "";
-	}
-	//If unauthorized, fail. Otherwise continue
-	if(!$token->verify($signer, $publicKey))
-		return "";
-	return $token->getClaim('sub');
-}
-
-//Using an admin JWT
-function adminAuthenticate()
-{
-	global $adminPublic;
-	$admin = authenticate($adminPublic);
-	if($admin == "")
-	{
-		header("HTTP/1.1 401 Unauthorized");
-		echo "Unauthorized";
-		exit;
-	}
-	return $admin;
-}
-
-//Using a user JWT
-function userAuthenticate()
-{
-	global $userPublic;
-	$user = authenticate($userPublic);
-	if($user == "")
-	{
-		header("HTTP/1.1 401 Unauthorized");
-		echo "Unauthorized";
-		exit;
-	}
-	return $user;
-}
-
-//Generate JWT with subject $subject that expires after $duration signed by $privateKeyFile
-function generateJWT($privateKeyFile, $subject, $duration)
-{
-	//We use RS256 for verification
-	$signer = new Sha256();
-	$time = time();
-	//Sign the JWT using the private key
-	$privateKey = new Key('file://' . $privateKeyFile);
-	$token = (new Builder())
-		->issuedAt($time) // Configures the time that the token was issue (iat claim)
-		->expiresAt($time + $duration) // Configures the expiration time of the token (exp claim)
-		->setSubject($subject) // Configures the subject of the token (sub claim)
-		->getToken($signer,  $privateKey); // Retrieves the generated token
-	error_log("Token generated for " . $subject . " with key " . $privateKeyFile);
-	return $token;
-}
-
-function userLogin($RCSid, $password)
-{
-	global $conn;
-	//Get the list of students with RCSid passed to us. List should
-	//be of length 0 or 1
-	$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
-	$statement->bind_param('s', $RCSid);
-	$statement->execute();
-	checkError();
-	$result = $statement->get_result();
-	if($result)
-	{
-		if(mysqli_num_rows($result) > 0)
-		{
-			$user = $result->fetch_assoc();
-			//Check the bcrypted password in DB against password passed to us
-			if(password_verify($password, $user['Password']))
-			{
-				error_log("Successful login as user " . $RCSid);
-				return true;
-			}
-			error_log("Failed login as user " . $RCSid . ": Bad password");
-			return false;
-		}
-		else
-		{
-			error_log("Failed login as user " . $RCSid . ": Bad RCSid");
-			return false;
-		}
-	}
-	else
-	{
-		header("HTTP/1.1 500 Internal Server Error");
-		error_log(mysqli_error($conn));
-		echo "Database Error";
-		exit;
-	}
-}
-
-function adminLogin($username, $password)
-{
-	global $conn;
-	//Get list of admin with username passed to us. List should be
-	//of length 0 or 1
-	$statement = $conn->prepare('SELECT * FROM admin WHERE username = ?');
-	$statement->bind_param('s', $username);
-	$statement->execute();
-	checkError();
-	$result = $statement->get_result();
-	if($result)
-	{
-		if(mysqli_num_rows($result) > 0)
-		{
-			$admin = $result->fetch_assoc();
-			//Check the bcrypted password in DB against password passed to us
-			if(password_verify($password, $admin['password']))
-			{
-				error_log("Successful login as admin " . $username);
-				return true;
-			}
-			else
-			{
-				error_log("Failed login as admin " . $username . ": Bad password");
-				return false;
-			}
-
-		}
-		else
-		{
-			error_log("Failed login as admin " . $username . ": Bad username");
-			return false;
-		}
-	}
-	else
-	{
-		header("HTTP/1.1 500 Internal Server Error");
-		error_log(mysqli_error($conn));
-		echo "Database Error";
-		exit;
-	}
-}
-
-function checkError()
-{
-	global $conn;
-	//If we failed, tell them. Otherwise, success
-	if(mysqli_errno($conn))
-	{
-		header("HTTP/1.1 500 Internal Server Error");
-		error_log(mysqli_error($conn));
-		echo "Database Error";
-		exit;
-	}
-}
-
-function genPassword()
-{
-	return bin2hex(random_bytes(16));
-}
-
-function confirmationEmail($RCSid)
-{
-	sendEmail($RCSid . "@rpi.edu", "Welcome to ADC!", "We're currently processing your request, and we'll reach out to you as soon as possible. If you have any questions, please direct them to adc@rpiadc.com");
-	error_log("Sent confirmation email to " . $RCSid);
-}
-
-function activatedEmail($RCSid, $tempPass)
-{
-	sendEmail($RCSid . "@rpi.edu", "Congratulations!", "Your RPI ADC account is now active. Your temporary password is " . $tempPass . ". You can use it to login at https://rpiadc.com, and don't forget to change it once you've logged in!");
-	error_log("Sent activation email to " . $RCSid);
-}
-
-function passwordChangeEmail($RCSid)
-{
-	sendEmail($RCSid . "@rpi.edu", "Password Change Notification", "Someone (hopefully you) just changed your password. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
-	error_log("Sent password change email to " . $RCSid);
-}
-
-function forgotPasswordEmail($RCSid)
-{
-	global $resetUserPrivate, $forgotPasswordDuration;
-
-	$forgotToken = generateJWT($resetUserPrivate, $RCSid, $forgotPasswordDuration); 
-	sendEmail($RCSid . "@rpi.edu", "Password Reset", "Someone (hopefully you) just requested a new password on this account. If it was you, please click the following link: <a href='https://rpiadc.com/api/forgot-password?token=" . $forgotToken . "'>RESET PASSWORD</a>. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
-	error_log("Sent forgot password email to " . $RCSid);
-}
-
-function resetPasswordEmail($RCSid, $tempPass)
-{
-	sendEmail($RCSid . "@rpi.edu", "Your Temporary Password", "Your password has been reset. Your temporary password is " . $tempPass . ". Please log in at https://rpiadc.com and change it as soon as possible");
-	error_log("Sent new password email to " . $RCSid);
-}
-
-function sendEmail($recipient, $subject, $message)
-{
-	global $mailServer, $mailUsername, $mailPassword, $mailPort, $mailSender;
-
-	$mail = new PHPMailer(true);
-	try
-	{
-		//Server settings
-		$mail->isSMTP();					// Send using SMTP
-		$mail->Host       = $mailServer;			// Set the SMTP server to send through
-		$mail->SMTPAuth   = true;				// Enable SMTP authentication
-		$mail->Username   = $mailUsername;			// SMTP username
-		$mail->Password   = $mailPassword;			// SMTP password
-		$mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;	// Enable TLS encryption; `PHPMailer::ENCRYPTION_SMTPS` also accepted
-		$mail->Port       = $mailPort ;				// TCP port to connect to
-
-		//Recipients
-		$mail->setFrom($mailSender);
-		$mail->addAddress($recipient);				// Add a recipient
-
-		// Content
-		$mail->isHTML(true);					// Set email format to HTML
-		$mail->Subject = $subject;
-		$mail->Body    = $message;
-
-		$mail->send();
-	}
-	catch (Exception $e)
-	{
-		header("HTTP/1.1 500 Internal Server Error");
-		echo "Mailer error";
-		error_log($mail->ErrorInfo);
-	}
-}
-
-function makeRequest($query)
-{
-	global $conn;
-	
-	//Make the request
-	$result = mysqli_query($conn, $query);
-	checkError();
-	if($result)
-	{
-		//If we get back a boolean, we're done
-		if (gettype($result) == 'boolean')
-		{
-			return "";
-		}
-		//If we have results, send them as a JSON array. Otherwise,
-		//send back an empty array
-		header('Content-Type: application/json');
-		$resultArr = [];
-		while($row = mysqli_fetch_assoc($result))
-		{
-			array_push($resultArr, $row);
-		}
-		return $resultArr;
-	}
-	else
-	{
-		header("HTTP/1.1 500 Internal Server Error");
-		error_log(mysqli_error($conn));
-		echo "Database Error";
-		exit;
-	}
-}
-
-function activate($RCSid)
-{
-	global $conn;
-
-	$tempPass = genPassword();
-	$statement = $conn->prepare('UPDATE students SET Status = "Active", Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
-	$statement->bind_param('s', $RCSid);
-	$statement->execute();
-	checkError();
-	activatedEmail($RCSid, $tempPass);
-}
-
-// Create connection
-$conn = mysqli_connect($servername, $username, $password, $dbname);
-
-// Check connection
-if (!$conn)
-{
-	header("HTTP/1.1 500 Internal Server Error");
-	error_log(mysqli_error($conn));
-	echo "Database Error";
-	exit;
-}
+$betterURI = explode('?', $_SERVER['REQUEST_URI'], 2)[0];
 
 //Server requests are differentiated by request method
 if ($_SERVER['REQUEST_METHOD'] === 'GET')
 {
 	//Because all calls to /api/* are redirected here, we must
 	//decide which call we're actually making
-	$query = '';
-	switch($_SERVER['REQUEST_URI'])
+	switch($betterURI)
 	{
 	case '/api/active_user':
 		adminAuthenticate();
-		$query = 'SELECT RCSid, Status FROM students WHERE Status = "Active"';
+		$query = '
+		SELECT
+			rcsid
+		FROM
+			users
+		WHERE
+			admin = 0 AND
+			enabled = 1';
+		//Output the result
+		dumpRequest($query);
 		break;
 	case '/api/inactive_user':
 		adminAuthenticate();
-		$query = 'SELECT RCSid, Status FROM students WHERE Status = "Request"';
+		$query = '
+		SELECT
+			rcsid
+		FROM
+			users
+		WHERE
+			admin = 0 AND
+			enabled = 0';
+		//Output the result
+		dumpRequest($query);
 		break;
-	case '/api/addAll':
+	case '/api/add_all':
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " added all students to active");
-		$query = 'SELECT RCSid FROM students WHERE Status = "Request"';
+		$query = '
+		SELECT 
+			rcsid
+		FROM 
+			users
+		WHERE
+			enabled = 0 AND
+			admin = 0';
 		$results = makeRequest($query);
 		foreach($results as $name)
 		{
-			activate($name);
+			$tempPass = resetPassword($name);
+			activatedEmail($name, $tempPass);
 		}
-		exit;
-	case '/api/get-complaints':
+		break;
+	case '/api/get_complaints':
 		adminAuthenticate();
 		$query = 'SELECT * FROM complaints';
+		//Output the result
+		dumpRequest($query);
 		break;
-	case '/api/get-doors':
+	case '/api/get_doors':
 		$query = 'SELECT name, location, latitude, longitude, mac FROM doors';
+		//Output the result
+		dumpRequest($query);
 		break;
-	case '/api/renew-token':
-		header('Content-Type: application/json');
-		$admin = authenticate($adminPublic);
-		$user = authenticate($userPublic);
-		if($admin != "")
+	case '/api/renew_token':
+		$token = getToken();
+		$user = authenticate("login", $token);
+		if($user == NULL)
 		{
-			//Check if user exists in database
-			$statement = $conn->prepare('SELECT username FROM admin WHERE username = ?');
-			$statement->bind_param('s', $admin);
-			$statement->execute();
-			checkError();
-			$result = $statement->get_result();
-			if($result)
-			{
-				if(mysqli_num_rows($result) > 0)
-				{
-					error_log("Admin " . $admin . " renewed their token");
-					$token = generateJWT($adminPrivate, $admin, $adminDuration);
-					echo json_encode(["SESSIONID"=>strval($token)]);
-					exit;
-				}
-			}
+			header("HTTP/1.1 401 Unauthorized");
+			echo "Unauthorized";
+			break;
 		}
-		else if($user != "")
+		$query = 'UPDATE tokens SET expiration = ADDDATE(UTC_TIMESTAMP, INTERVAL ? SECOND) WHERE value = ?';
+		$statement = $conn->prepare($query);
+		$statement->bind_param('is', $loginDuration, $token);
+		$statement->execute();
+		error_log('Renewed token for ' . $user['rcsid']);
+		checkError();
+		break;
+	case '/api/forgot_password':
+		$token = $_GET['token'];
+		$user = authenticate("forgot-passwd", $_GET['token']);
+		if($user != NULL)
 		{
-			//Check if user exists in database
-			$statement = $conn->prepare('SELECT Status FROM students WHERE Status = "Active" AND RCSid = ?');
-			$statement->bind_param('s', $user);
-			$statement->execute();
-			checkError();
-			$result = $statement->get_result();
-			if($result)
-			{
-				if(mysqli_num_rows($result) > 0)
-				{
-					error_log("User " . $user . " renewed their token");
-					$token = generateJWT($userPrivate, $user, $userDuration);
-					echo json_encode(["SESSIONID"=>strval($token)]);
-					exit;
-				}
-			}
-		}
-		//If no such user exists, send back an empty SESSIONID
-		echo json_encode(["SESSIONID"=>""]);
-		exit;
-	case '/api/forgot-password':
-		$user = jwtAuthenticate($resetUserPublic, $_GET['token']);
-		if($user != "")
-		{
-			//Check if user exists in database
-			$statement = $conn->prepare('SELECT Status FROM students WHERE Status = "Active" AND RCSid = ?');
-			$statement->bind_param('s', $user);
-			$statement->execute();
-			checkError();
-			$result = $statement->get_result();
-			if($result)
-			{
-				if(mysqli_num_rows($result) > 0)
-				{
-					error_log("User " . $user . " reset their password");
-					$tempPass = genPassword();
-					$statement = $conn->prepare('UPDATE students SET Password = "' . password_hash($tempPass, PASSWORD_BCRYPT) . '" WHERE RCSid = ?');
-					$statement->bind_param('s', $user);
-					$statement->execute();
-					checkError();
-					resetPasswordEmail($user, $tempPass);
-				}
-			}
+			error_log("User " . $user['rcsid'] . " reset their password");
+			$tempPass = resetPassword($user['rcsid']);
+			resetPasswordEmail($user['rcsid'], $tempPass);
 		}
 		header("Location: https://rpiadc.com/");
-		exit;
+		break;
+	case '/api/logout':
+		$token = getToken();
+		if($token != "")
+		{
+			$query = 'DELETE FROM tokens WHERE value = ?';
+			$statement = $conn->prepare($query);
+			$statement->bind_param('s', $token);
+			$statement->execute();
+			checkError();
+		}
+		break;
 
 	//If we don't know this call, tell our client
 	default:
 		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
-		error_log("Unknown API call: GET " . $_SERVER['REQUEST_URI']);
-		exit;
+		error_log("Unknown API call: GET " . $betterURI);
 	}
-	//Output the result
-	echo json_encode(makeRequest($query));
 }
 else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 {
@@ -460,69 +127,52 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 	switch($_SERVER['REQUEST_URI'])
 	{
 	case '/api/login':
-		if(!userLogin($postData['RCSid'], $postData['password']))
-		{
-			//If no such user exists, send back an empty SESSIONID
-			header('Content-Type: application/json');
-			echo json_encode(["SESSIONID"=>""]);
-			exit;
-		}
-		//If this user exists, generate a JWT for client
-		$token = generateJWT($userPrivate, $postData['RCSid'], $userDuration);
-		checkError();
-		//Send the token to the client
 		header('Content-Type: application/json');
-		echo json_encode(["SESSIONID"=>strval($token)]);
-		break;
-	case '/api/admin/login':
-		if(!adminLogin($postData['username'], $postData['password']))
+		//If no such user exists, send back an empty SESSIONID
+		$token = "";
+		$isAdmin = login($postData['rcsid'], $postData['password']);
+		if($isAdmin != -1)
 		{
-			//If no such admin exists, send back an empty SESSIONID
-			header('Content-Type: application/json');
-			echo json_encode(["SESSIONID"=>""]);
-			exit;
+			//If this user exists, generate a JWT for client
+			$token = generateToken($postData['rcsid'], "login", $loginDuration);
 		}
-		//If this admin exists and the passwords match, generate a JWT
-		$token = generateJWT($adminPrivate, $postData['username'], $adminDuration);
-		checkError();
 		//Send the token to the client
-		header('Content-Type: application/json');
-		echo json_encode(["SESSIONID"=>strval($token)]);
+		echo json_encode(["SESSIONID"=>$token, "admin"=>$isAdmin]);
 		break;
-	case '/api/request-access':
-		error_log("Access request with RCSid " . $postData['RCSid']);
+	case '/api/request_access':
+		error_log("Access request with rcsid " . $postData['rcsid']);
 		//Insert a new student with Status Request and RSCid passed to us
-		$statement = $conn->prepare('INSERT INTO students (RCSid, Status, Password) VALUES (?, "Request", "")');
-		$statement->bind_param('s', $postData['RCSid']);
+		$statement = $conn->prepare('INSERT INTO users (rcsid, password, admin, enabled) VALUES (?, "", 0, 0)');
+		$statement->bind_param('s', $postData['rcsid']);
 		$statement->execute();
 		checkError();
-		confirmationEmail($postData['RCSid']);
+		confirmationEmail($postData['rcsid']);
 		break;
-	case '/api/addtoActive':
+	case '/api/add_to_active':
 		//Check if user is an admin
 		$admin = adminAuthenticate();
-		error_log("Admin " . $admin . " added user " . $postData['RCSid'] . " to active");
+		error_log("Admin " . $admin . " added user " . $postData['rcsid'] . " to active");
 		//If they are, change Status of user with RCSid passed to us to Active
-		activate($postData['RCSid']);
+		activate($postData['rcsid']);
 		break;
 	case '/api/remove':
 		//Check if user is an admin
 		$admin = adminAuthenticate();
-		error_log("Admin " . $admin . " removed user " . $postData['RCSid']);
+		error_log("Admin " . $admin . " removed user " . $postData['rcsid']);
 		//If they are, remove user with RCSid passed to us from db
-		$statement = $conn->prepare('DELETE FROM students WHERE RCSid = ?');
-		$statement->bind_param('s', $postData['RCSid']);
+		$statement = $conn->prepare('DELETE FROM students WHERE rcsid = ? AND admin = 0');
+		$statement->bind_param('s', $postData['rcsid']);
 		$statement->execute();
 		checkError();
 		break;
-	case '/api/submit-complaint':
+	case '/api/submit_complaint':
 		//Insert a new complaint with location and message passed to us
 		$statement = $conn->prepare('INSERT INTO complaints (location, message) VALUES (?, ?)');
-		$statement->bind_param('ss', $postData['Location'], $postData['Message']);
+		$statement->bind_param('ss', $postData['location'], $postData['message']);
 		$statement->execute();
 		checkError();
 		break;
-	case '/api/open-door':
+	case '/api/open_door':
 		//Check if client is a user
 		$user = userAuthenticate();
 		error_log("User " . $user . " opened door " . $postData['door']);
@@ -532,91 +182,61 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$statement->execute();
 		$result = $statement->get_result();
 		checkError();
-		if($result)
+		if(mysqli_num_rows($result) > 0)
 		{
-			if(mysqli_num_rows($result) > 0)
-			{
-				//If we get the key, generate a TOTP from the key
-				//and send it to the client
-				$secret = mysqli_fetch_assoc($result)['key'];
-				$otp = TOTP::create($secret, 30, 'sha1', 6);
-				echo json_encode(['TOTP'=>strval($otp->now())]);
-			}
-			else
-			{
-				header("HTTP/1.1 400 Bad Request");
-				error_log("No such door");
-				echo "Door not found";
-			}
+			//If we get the key, generate a TOTP from the key
+			//and send it to the client
+			$secret = mysqli_fetch_assoc($result)['key'];
+			$otp = TOTP::create($secret, 30, 'sha1', 6);
+			echo json_encode(['TOTP'=>strval($otp->now())]);
 		}
 		else
 		{
-			header("HTTP/1.1 500 Internal Server Error");
-			error_log(mysqli_error($conn));
-			echo "Database Error";
+			header("HTTP/1.1 400 Bad Request");
+			error_log("No such door");
+			echo "Door not found";
 		}
 		break;
-	case '/api/change-password':
+	case '/api/change_password':
 		//Check if credentials are correct
-		if(!userLogin($postData['RCSid'], $postData['password']))
+		if(login($postData['rcsid'], $postData['password']) == -1)
 		{
 			echo "Bad credentials";
 			exit;
 		}
 		//Create statement and hash password
-		$statement = $conn->prepare('UPDATE students SET Password = ? WHERE RCSid = ?');
-		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
-		$statement->bind_param('ss', $newPass, $postData['RCSid']);
+		$statement = $conn->prepare('UPDATE users SET password = ? WHERE rcsid = ?');
+		$newPass = password_hash($postData['newpass'], PASSWORD_BCRYPT);
+		$statement->bind_param('ss', $newPass, $postData['rcsid']);
 		$statement->execute();
+		error_log("Changed password for " . $postData['rcsid']);
 		checkError();
-		$result = $statement->get_result();
-		error_log("Changed password for user " . $postData['RCSid']);
 		//If we failed, tell them. Otherwise, success
-		passwordChangeEmail($postData['RCSid']);
+		passwordChangeEmail($postData['rcsid']);
 		break;
-	case '/api/admin/change-password':
-		//Check if credentials are correct
-		if(!adminLogin($postData['username'], $postData['password']))
-		{
-			echo "Bad credentials";
-			exit;
-		}
-		//Create statement and hash password
-		$statement = $conn->prepare('UPDATE admin SET password = ? WHERE username = ?');
-		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
-		$statement->bind_param('ss', $newPass, $postData['username']);
-		$statement->execute();
-		checkError();
-		$result = $statement->get_result();
-		error_log("Changed password for admin " . $postData['username']);
-		break;
-	case '/api/reset-password':
+	case '/api/reset_password':
 		//Check if user is an admin
 		$admin = adminAuthenticate();
-		//If the are, create the statement and hash password
-		error_log("Admin " . $admin . " reset password for user " . $postData['RCSid']);
-		$statement = $conn->prepare('UPDATE students SET Password = ? WHERE RCSid = ?');
-		$newPass = password_hash($postData['newPassword'], PASSWORD_BCRYPT);
-		$statement->bind_param('ss', $newPass, $postData['RCSid']);
+		//If they are, create the statement and hash password
+		error_log("Admin " . $admin . " reset password for user " . $postData['rcsid']);
+		$statement = $conn->prepare('UPDATE users SET password = ? WHERE rcsid = ? AND admin = 0');
+		$newPass = password_hash($postData['newpass'], PASSWORD_BCRYPT);
+		$statement->bind_param('ss', $newPass, $postData['rcsid']);
 		$statement->execute();
 		checkError();
-		$result = $statement->get_result();
 		break;
-	case '/api/forgot-password':
-		error_log("User " . $postData['RCSid'] . " forgot their password");
-		$statement = $conn->prepare('SELECT * FROM students WHERE RCSid = ? AND STATUS = "Active"');
-		$statement->bind_param('s', $RCSid);
+	case '/api/forgot_password':
+		error_log("User " . $postData['rcsid'] . " forgot their password");
+		$statement = $conn->prepare('SELECT * FROM users WHERE rcsid = ? AND enabled = 1');
+		$statement->bind_param('s', $postData['rcsid']);
 		$statement->execute();
 		checkError();
 		$result = $statement->get_result();
-		if($result)
+		if($result && mysqli_num_rows($result) > 0)
 		{
-			if(mysqli_num_rows($result) > 0)
-			{
-				forgotPasswordEmail($postData['RCSid']);
-			}
+			forgotPasswordEmail($postData['rcsid']);
 		}
-		exit;
+		break;
 	default:
 		header("HTTP/1.1 400 Bad Request");
 		echo "Unknown API call";
