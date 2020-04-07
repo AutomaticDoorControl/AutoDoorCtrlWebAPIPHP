@@ -162,7 +162,7 @@ else if ($_SERVER['REQUEST_METHOD'] === 'POST')
 		$admin = adminAuthenticate();
 		error_log("Admin " . $admin . " removed user " . $postData['rcsid']);
 		//If they are, remove user with RCSid passed to us from db
-		$statement = $conn->prepare('DELETE FROM students WHERE rcsid = ? AND admin = 0');
+		$statement = $conn->prepare('DELETE FROM users WHERE rcsid = ? AND admin = 0');
 		$statement->bind_param('s', $postData['rcsid']);
 		$statement->execute();
 		checkError();
