@@ -6,7 +6,7 @@ RewriteRule ^ - [L]
 
 # If the requested resource is an API endpoint, use api/index.html
 RewriteCond %{REQUEST_URI} ^/api/
-RewriteRule .* /api/index.php [L]
+RewriteRule .* /api/index.php? [L,QSA]
 
 # If an existing asset or directory is requested go to it as it is
 RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -f [OR]

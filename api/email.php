@@ -27,7 +27,7 @@ function forgotPasswordEmail($rcsid)
 	global $resetUserPrivate, $forgotPasswordDuration;
 
 	$forgotToken = generateToken($rcsid, "forgot-passwd", $forgotPasswordDuration);
-	sendEmail($rcsid . "@rpi.edu", "Password Reset", "Someone (hopefully you) just requested a new password on this account. If it was you, please click the following link: <a href='https://rpiadc.com/api/forgot-password?token=" . $forgotToken . "'>RESET PASSWORD</a>. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
+	sendEmail($rcsid . "@rpi.edu", "Password Reset", "Someone (hopefully you) just requested a new password on this account. If it was you, please click the following link: <a href='https://rpiadc.com/api/forgot_password?token=" . $forgotToken . "'>RESET PASSWORD</a>. If it wasn't you, please let us know right away at webmaster@rpiadc.com");
 	error_log("Sent forgot password email to " . $rcsid);
 }
 
